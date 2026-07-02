@@ -58,29 +58,44 @@ function csvCell(value: string | number): string {
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
+/** Ensure "CC-Name" has a zero-padded 2-digit state code. */
+function padPlaceOfSupply(value: string): string {
+  const m = value.match(/^(\d{1,2})\s*-\s*(.+)$/);
+  if (!m) return value;
+  return `${m[1].padStart(2, "0")}-${m[2].trim()}`;
+}
+
 export function exportGstr1Workbook(records: InvoiceRecord[]): void {
   const rows: string[][] = [];
 
-  // The B2B, SEZ, DE section only accepts invoices with a valid recipient GSTIN.
-  // B2C rows here cause the offline utility to reject the whole file with
-  // "all rows have invalid data / wrong section file".
   const b2b = records.filter(
-    (r) => r.category === "B2B" && !!r.customerGstin && GSTIN_PATTERN.test(r.customerGstin),
+    (r) => r.category === "B2B" && !!r.customerGstin && GSTIN_PATTERN.test(r.customerGstin.trim()),
   );
 
   for (const r of b2b) {
-    const splits = r.rateSplits.length
-      ? r.rateSplits
-      : [{ rate: 0, taxableValue: 0, igst: 0, cgst: 0, sgst: 0 }];
+    const gstin = r.customerGstin!.trim();
+    const receiver = cleanText(r.customerName);
+    const invNo = cleanText(r.invoiceNumber);
+    const invDate = toTemplateDate(r.invoiceDate);
+    const invValue = Number(r.invoiceValue ?? 0);
+    const pos = padPlaceOfSupply(cleanText(r.placeOfSupply));
+
+    // Utility rejects rows with missing required fields.
+    if (!receiver || !invNo || !invDate || !pos || !(invValue > 0)) continue;
+
+    const splits = r.rateSplits.filter(
+      (s) => Number(s.rate) >= 0 && Number(s.taxableValue) > 0,
+    );
+    if (!splits.length) continue;
 
     for (const s of splits) {
       rows.push([
-        cleanText(r.customerGstin),
-        cleanText(r.customerName),
-        cleanText(r.invoiceNumber),
-        toTemplateDate(r.invoiceDate),
-        formatNumber(r.invoiceValue),
-        cleanText(r.placeOfSupply),
+        gstin,
+        receiver,
+        invNo,
+        invDate,
+        formatNumber(invValue),
+        pos,
         "N",
         "",
         invoiceType(r),
