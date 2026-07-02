@@ -2,9 +2,8 @@ import { GSTIN_REGEX, stateFromGstin, STATE_CODES } from "./states";
 
 // Configure pdfjs worker (Vite ?url import)
 import * as pdfjsLib from "pdfjs-dist";
-// @ts-expect-error - vite worker url import
 import workerSrc from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-(pdfjsLib as any).GlobalWorkerOptions.workerSrc = workerSrc;
+(pdfjsLib as unknown as { GlobalWorkerOptions: { workerSrc: string } }).GlobalWorkerOptions.workerSrc = workerSrc;
 
 export interface RateSplit {
   rate: number;
