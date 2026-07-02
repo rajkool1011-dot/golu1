@@ -140,16 +140,23 @@ function extractCustomerName(text: string): string | null {
 }
 
 function extractInvoiceValue(text: string): number | null {
-  const patterns = [
-    /(?:Grand\s*Total|Invoice\s*Total|Total\s*Invoice\s*Value|Total\s*Amount|Bill\s*Total|Net\s*Payable)\s*[:\-]?\s*₹?\s*(-?[\d,]+\.?\d*)/i,
-    /Total\s*[:\-]?\s*₹?\s*(-?[\d,]+\.\d{2})\s*$/im,
-  ];
-  for (const p of patterns) {
-    const m = text.match(p);
-    if (m) return num(m[1]);
+  const labels =
+    "(?:Grand\\s*Total|Invoice\\s*Total|Total\\s*Invoice\\s*Value|Total\\s*Amount|Bill\\s*Total|Net\\s*(?:Payable|Amount)|Amount\\s*Payable|Amount\\s*Chargeable(?:\\s*\\(in\\s*words\\))?|Balance\\s*Due|Total)";
+  // Look at each occurrence of a label and take the last numeric amount within ~60 chars
+  const re = new RegExp(`${labels}[^\\n\\r]{0,80}?(?:₹|Rs\\.?|INR)?\\s*(-?[\\d,]+\\.\\d{2})`, "gi");
+  let best: number | null = null;
+  let m;
+  while ((m = re.exec(text))) {
+    const v = num(m[1]);
+    if (v > (best ?? 0)) best = v;
   }
+  if (best !== null) return best;
+  // Fallback: largest currency-formatted number in the doc
+  const amounts = [...text.matchAll(/(?:₹|Rs\.?|INR)\s*(-?[\d,]+\.\d{2})/g)].map((x) => num(x[1]));
+  if (amounts.length) return Math.max(...amounts);
   return null;
 }
+
 
 /**
  * Detect rate splits. Looks for GST rate percentages (5,12,18,28) associated
