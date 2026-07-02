@@ -182,25 +182,31 @@ function extractInvoiceDate(text: string): string | null {
 
 
 function extractPlaceOfSupply(text: string): string | null {
-  const m = text.match(/Place\s*of\s*Supply\s*[:\-]?\s*([A-Za-z0-9\-\s&()]+?)(?:\n|State|GSTIN|\(|$)/i);
-  if (m) {
-    const raw = m[1].trim().replace(/\s+/g, " ");
-    // Sometimes formatted as "27-Maharashtra" or "Maharashtra (27)"
-    const codeMatch = raw.match(/^(\d{2})[\s\-]/);
-    if (codeMatch) return STATE_CODES[codeMatch[1]] ?? raw;
-    return raw;
+  const patterns = [
+    /Place\s*of\s*Supply\s*[:\-]?\s*([A-Za-z0-9\-\s&()]+?)(?:\n|State|GSTIN|\(|$)/i,
+    /\bState\s*(?:Name)?\s*[:\-]\s*([A-Za-z&\s]+?)(?:\s*,|\n|Code|GSTIN|Party|Bill|Ship|$)/i,
+  ];
+  for (const p of patterns) {
+    const m = text.match(p);
+    if (m) {
+      const raw = m[1].trim().replace(/\s+/g, " ");
+      const codeMatch = raw.match(/^(\d{2})[\s\-]/);
+      if (codeMatch) return STATE_CODES[codeMatch[1]] ?? raw;
+      return raw;
+    }
   }
   return null;
 }
 
 function extractCustomerName(text: string): string | null {
   const patterns = [
+    /Party\s*Name\s*[:\-]?\s*([A-Za-z0-9 &.,'\-]{2,80})/i,
     /(?:Bill(?:ed)?\s*To|Buyer|Customer|Consignee)\s*[:\-]?\s*\n?\s*([A-Z][A-Za-z0-9 &.,'\-]{2,80})/,
     /(?:Bill(?:ed)?\s*To|Buyer|Customer|Consignee)\s*[:\-]\s*([A-Za-z0-9 &.,'\-]{2,80})/i,
   ];
   for (const p of patterns) {
     const m = text.match(p);
-    if (m) return m[1].trim();
+    if (m) return m[1].trim().replace(/\s+/g, " ");
   }
   return null;
 }
