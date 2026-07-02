@@ -321,10 +321,10 @@ function extractRateSplits(text: string): RateSplit[] {
     // Sanity: taxable must be strictly larger than any tax column in the row.
     const maxTax = Math.max(...nums.slice(1));
     if (taxable <= maxTax) continue;
-    // Sanity: total tax in the row should be within ~15% of taxable * rate/100.
+    // Sanity: total tax in the row shouldn't wildly exceed taxable * rate/100.
     const expectedTotalTax = (taxable * rate) / 100;
     const totalTaxInRow = nums.slice(1).reduce((a, b) => a + b, 0);
-    if (rate > 0 && Math.abs(totalTaxInRow - expectedTotalTax) > Math.max(2, expectedTotalTax * 0.15)) continue;
+    if (rate > 0 && totalTaxInRow > expectedTotalTax * 2.5 + 2) continue;
     const rec = ensure(rate);
     rec.taxableValue = Math.max(rec.taxableValue, taxable);
     if (nums.length >= 4) {
