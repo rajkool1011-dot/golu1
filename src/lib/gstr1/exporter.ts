@@ -63,7 +63,8 @@ export function exportGstr1Workbook(records: InvoiceRecord[]): void {
         "E-Commerce GSTIN": "",
         "Rate": s.rate,
         "Taxable Value": s.taxableValue,
-        "Cess Amount": 0,
+        "Cess Amount": "",
+
       });
     }
   }
