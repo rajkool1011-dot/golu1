@@ -96,18 +96,24 @@ function extractInvoiceNumber(text: string): string | null {
 }
 
 function extractInvoiceDate(text: string): string | null {
+  // Try label + value on same line OR next line (up to ~40 chars away)
   const patterns = [
-    /(?:Invoice|Bill|Dated?)\s*Date\s*[:\-]?\s*([0-3]?\d[\/\-\.][01]?\d[\/\-\.](?:20)?\d{2})/i,
-    /Date\s*[:\-]?\s*([0-3]?\d[\/\-\.][01]?\d[\/\-\.](?:20)?\d{2})/i,
-    /Dated?\s*[:\-]?\s*([0-3]?\d\s+[A-Za-z]{3,9}\s+\d{2,4})/i,
-    /([0-3]?\d[\/\-\.][01]?\d[\/\-\.]20\d{2})/,
+    /(?:Invoice|Bill|Doc(?:ument)?)\s*Date[\s:\-]*([0-3]?\d[\/\-.\s][01]?\d[\/\-.\s](?:20)?\d{2})/i,
+    /(?:Invoice|Bill|Doc(?:ument)?)\s*Date[\s:\-]*([0-3]?\d[\s\-][A-Za-z]{3,9}[\s\-]\d{2,4})/i,
+    /\bDated?[\s:\-]*([0-3]?\d[\/\-.\s][01]?\d[\/\-.\s](?:20)?\d{2})/i,
+    /\bDated?[\s:\-]*([0-3]?\d[\s\-][A-Za-z]{3,9}[\s\-]\d{2,4})/i,
+    /\bDate[\s:\-]*([0-3]?\d[\/\-.\s][01]?\d[\/\-.\s](?:20)?\d{2})/i,
+    // fallback: first date-looking token in doc
+    /([0-3]?\d[\/\-.][01]?\d[\/\-.]20\d{2})/,
+    /([0-3]?\d[\s\-][A-Za-z]{3,9}[\s\-]20\d{2})/,
   ];
   for (const p of patterns) {
     const m = text.match(p);
-    if (m) return m[1].trim();
+    if (m) return m[1].replace(/\s+/g, " ").trim();
   }
   return null;
 }
+
 
 function extractPlaceOfSupply(text: string): string | null {
   const m = text.match(/Place\s*of\s*Supply\s*[:\-]?\s*([A-Za-z0-9\-\s&()]+?)(?:\n|State|GSTIN|\(|$)/i);
