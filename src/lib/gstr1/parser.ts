@@ -173,11 +173,38 @@ function extractInvoiceDate(text: string): string | null {
 
   if (candidates.length) {
     candidates.sort((a, b) => b.score - a.score || a.line - b.line);
-    return candidates[0].value;
+    return normalizeDate(candidates[0].value);
   }
 
   const fallback = text.match(dateTokenRegex("i"));
-  return fallback ? fallback[1].replace(/\s+/g, " ").trim() : null;
+  return fallback ? normalizeDate(fallback[1].replace(/\s+/g, " ").trim()) : null;
+}
+
+const MONTHS: Record<string, string> = {
+  jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
+  jul: "07", aug: "08", sep: "09", sept: "09", oct: "10", nov: "11", dec: "12",
+};
+
+function normalizeDate(raw: string): string {
+  const s = raw.trim().replace(/\s+/g, " ");
+  const expandYY = (y: string) => {
+    if (y.length === 4) return y;
+    const n = parseInt(y, 10);
+    return (n >= 70 ? 1900 + n : 2000 + n).toString();
+  };
+  // DD-MON-YY or DD MON YYYY
+  let m = s.match(/^([0-3]?\d)[\s\-\/,]+([A-Za-z]{3,9})[\s\-\/,]+(\d{2,4})$/);
+  if (m) {
+    const mon = MONTHS[m[2].slice(0, 3).toLowerCase()];
+    if (mon) return `${m[1].padStart(2, "0")}-${mon}-${expandYY(m[3])}`;
+  }
+  // YYYY-MM-DD
+  m = s.match(/^(\d{4})[\-\/.]([01]?\d)[\-\/.]([0-3]?\d)$/);
+  if (m) return `${m[3].padStart(2, "0")}-${m[2].padStart(2, "0")}-${m[1]}`;
+  // DD/MM/YY(YY) or DD-MM-YY(YY)
+  m = s.match(/^([0-3]?\d)[\-\/.]([01]?\d)[\-\/.](\d{2,4})$/);
+  if (m) return `${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}-${expandYY(m[3])}`;
+  return s;
 }
 
 
