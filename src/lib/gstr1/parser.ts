@@ -95,8 +95,11 @@ function extractInvoiceNumber(text: string): string | null {
   return null;
 }
 
+const MONTH_TOKEN_PATTERN =
+  "(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)";
+
 const DATE_TOKEN_PATTERN =
-  "([0-3]?\\d[\\/\\-.][01]?\\d[\\/\\-.](?:\\d{2}|\\d{4})|[0-3]?\\d[\\s\u00a0\-][A-Za-z]{3,9}[\\s\u00a0,\-]+\\d{2,4}|(?:20)?\\d{2}[\\/\\-.][01]?\\d[\\/\\-.][0-3]?\\d)";
+  `([0-3]?\\d[\\/\\-.][01]?\\d[\\/\\-.](?:\\d{2}|\\d{4})|[0-3]?\\d[\\s\u00a0\-]${MONTH_TOKEN_PATTERN}[\\s\u00a0,\-]+\\d{2,4}|(?:20)?\\d{2}[\\/\\-.][01]?\\d[\\/\\-.][0-3]?\\d)`;
 
 function dateTokenRegex(flags = "gi") {
   return new RegExp(DATE_TOKEN_PATTERN, flags);
