@@ -95,23 +95,89 @@ function extractInvoiceNumber(text: string): string | null {
   return null;
 }
 
-function extractInvoiceDate(text: string): string | null {
-  // Try label + value on same line OR next line (up to ~40 chars away)
-  const patterns = [
-    /(?:Invoice|Bill|Doc(?:ument)?)\s*Date[\s:\-]*([0-3]?\d[\/\-.\s][01]?\d[\/\-.\s](?:20)?\d{2})/i,
-    /(?:Invoice|Bill|Doc(?:ument)?)\s*Date[\s:\-]*([0-3]?\d[\s\-][A-Za-z]{3,9}[\s\-]\d{2,4})/i,
-    /\bDated?[\s:\-]*([0-3]?\d[\/\-.\s][01]?\d[\/\-.\s](?:20)?\d{2})/i,
-    /\bDated?[\s:\-]*([0-3]?\d[\s\-][A-Za-z]{3,9}[\s\-]\d{2,4})/i,
-    /\bDate[\s:\-]*([0-3]?\d[\/\-.\s][01]?\d[\/\-.\s](?:20)?\d{2})/i,
-    // fallback: first date-looking token in doc
-    /([0-3]?\d[\/\-.][01]?\d[\/\-.]20\d{2})/,
-    /([0-3]?\d[\s\-][A-Za-z]{3,9}[\s\-]20\d{2})/,
-  ];
-  for (const p of patterns) {
-    const m = text.match(p);
-    if (m) return m[1].replace(/\s+/g, " ").trim();
+const DATE_TOKEN_PATTERN =
+  "([0-3]?\\d[\\/\\-.][01]?\\d[\\/\\-.](?:\\d{2}|\\d{4})|[0-3]?\\d[\\s\u00a0\-][A-Za-z]{3,9}[\\s\u00a0,\-]+\\d{2,4}|(?:20)?\\d{2}[\\/\\-.][01]?\\d[\\/\\-.][0-3]?\\d)";
+
+function dateTokenRegex(flags = "gi") {
+  return new RegExp(DATE_TOKEN_PATTERN, flags);
+}
+
+function dateTokens(line: string): Array<{ value: string; index: number }> {
+  const re = dateTokenRegex("gi");
+  const out: Array<{ value: string; index: number }> = [];
+  let m;
+  while ((m = re.exec(line))) {
+    out.push({ value: m[1].replace(/\s+/g, " ").trim(), index: m.index });
   }
-  return null;
+  return out;
+}
+
+function isNonInvoiceDateContext(text: string): boolean {
+  return /\b(?:due|delivery|delivered|dispatch|dispatched|order|purchase\s*order|po|eway|e-way|e\s*way|ack(?:nowledg(?:e)?ment)?|challan|lr|payment|valid|expiry|period|statement|return|shipping|transport)\s*(?:no\.?|number|#)?\s*(?:date|dt|dated)?\b/i.test(
+    text,
+  );
+}
+
+function nearestTokenToColumn(tokens: Array<{ value: string; index: number }>, columnIndex: number) {
+  return tokens.reduce((best, token) =>
+    Math.abs(token.index - columnIndex) < Math.abs(best.index - columnIndex) ? token : best,
+  );
+}
+
+function extractInvoiceDate(text: string): string | null {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  const candidates: Array<{ value: string; score: number; line: number }> = [];
+  const push = (value: string | undefined, score: number, line: number) => {
+    if (!value) return;
+    candidates.push({ value: value.replace(/\s+/g, " ").trim(), score, line });
+  };
+
+  lines.forEach((line, i) => {
+    const tokens = dateTokens(line);
+    if (tokens.length) {
+      for (const token of tokens) {
+        const before = line.slice(Math.max(0, token.index - 80), token.index);
+        const near = line.slice(Math.max(0, token.index - 80), token.index + token.value.length + 35);
+        let score = 20;
+        if (/\b(?:invoice|inv\.?|bill|tax\s*invoice|doc(?:ument)?)\b/i.test(before)) score += 90;
+        if (/\b(?:invoice\s*date|inv\.?\s*date|bill\s*date|document\s*date|date\s*of\s*invoice|dated|dt\.?)\b/i.test(near))
+          score += 100;
+        else if (/\b(?:date|dt\.?)\b/i.test(before)) score += 45;
+        if (isNonInvoiceDateContext(near)) score -= 140;
+        push(token.value, score, i);
+      }
+    }
+
+    const dateHeaderMatch = line.match(/\b(?:invoice\s*date|inv\.?\s*date|bill\s*date|document\s*date|date\s*of\s*invoice|dated|dt\.?)\b/i);
+    const hasInvoiceHeader = /\b(?:tax\s*invoice|invoice\s*(?:no|number|#)?|inv\.?\s*(?:no|number|#)?|bill\s*(?:no|number|#)?)\b/i.test(line);
+    const hasDateHeader = /\b(?:date|dated|dt\.?)\b/i.test(line);
+
+    // Highlighted/table cells often render as one header row (Invoice No | Dated)
+    // followed by a value row. Prefer the date directly under the Date/Dated column.
+    if ((hasInvoiceHeader && hasDateHeader) || dateHeaderMatch) {
+      const columnIndex = dateHeaderMatch?.index ?? line.search(/\b(?:date|dated|dt\.?)\b/i);
+      for (let offset = 1; offset <= 3 && i + offset < lines.length; offset++) {
+        const nextLine = lines[i + offset];
+        if (isNonInvoiceDateContext(nextLine)) continue;
+        const nextTokens = dateTokens(nextLine);
+        if (!nextTokens.length) continue;
+        const chosen = nearestTokenToColumn(nextTokens, Math.max(0, columnIndex));
+        push(chosen.value, 210 - offset * 15, i + offset);
+        break;
+      }
+    }
+  });
+
+  if (candidates.length) {
+    candidates.sort((a, b) => b.score - a.score || a.line - b.line);
+    return candidates[0].value;
+  }
+
+  const fallback = text.match(dateTokenRegex("i"));
+  return fallback ? fallback[1].replace(/\s+/g, " ").trim() : null;
 }
 
 
