@@ -14,7 +14,8 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { FileText, Upload, Download, AlertCircle, CheckCircle2, Loader2, Trash2 } from "lucide-react";
-import { parseInvoicePdf, type InvoiceRecord } from "@/lib/gstr1/parser";
+import type { InvoiceRecord } from "@/lib/gstr1/parser";
+import { parseInvoiceAI } from "@/lib/gstr1/ai-parser";
 import { exportGstr1Workbook } from "@/lib/gstr1/exporter";
 
 export const Route = createFileRoute("/")({
