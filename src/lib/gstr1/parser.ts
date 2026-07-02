@@ -33,23 +33,42 @@ export interface InvoiceRecord {
 async function readPdfText(file: File): Promise<string> {
   const buf = await file.arrayBuffer();
   const pdf = await (pdfjsLib as any).getDocument({ data: buf }).promise;
+  const Y_TOL = 3;
   const out: string[] = [];
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
-    // Preserve some layout by grouping items on the same line via y-coordinate
-    const items = content.items as Array<{ str: string; transform: number[] }>;
-    const lines = new Map<number, string[]>();
+    const items = content.items as Array<{ str: string; transform: number[]; width?: number }>;
+    const lineMap = new Map<number, Array<{ str: string; x: number; width: number }>>();
     for (const it of items) {
-      const y = Math.round(it.transform[5]);
-      if (!lines.has(y)) lines.set(y, []);
-      lines.get(y)!.push(it.str);
+      if (!it.str || !it.str.trim()) continue;
+      const yKey = Math.round(it.transform[5] / Y_TOL) * Y_TOL;
+      if (!lineMap.has(yKey)) lineMap.set(yKey, []);
+      lineMap.get(yKey)!.push({
+        str: it.str,
+        x: it.transform[4],
+        width: it.width ?? it.str.length * 5,
+      });
     }
-    const sorted = [...lines.entries()].sort((a, b) => b[0] - a[0]);
-    out.push(sorted.map(([, arr]) => arr.join(" ")).join("\n"));
+    const sorted = [...lineMap.entries()]
+      .sort((a, b) => b[0] - a[0])
+      .map(([, arr]) => {
+        arr.sort((a, b) => a.x - b.x);
+        let line = "";
+        for (let j = 0; j < arr.length; j++) {
+          if (j > 0) {
+            const gap = arr[j].x - (arr[j - 1].x + arr[j - 1].width);
+            line += gap > 10 ? "  " : gap > 2 ? " " : "";
+          }
+          line += arr[j].str;
+        }
+        return line;
+      });
+    out.push(sorted.join("\n"));
   }
   return out.join("\n");
 }
+
 
 function num(s: string): number {
   return parseFloat(s.replace(/,/g, "").replace(/[^\d.\-]/g, "")) || 0;
