@@ -406,6 +406,19 @@ export async function parseInvoicePdf(file: File): Promise<InvoiceRecord> {
         : "Interstate"
       : "Unknown";
 
+  // Rebalance IGST vs CGST/SGST based on supply type (parser can't know upfront).
+  for (const r of rateSplits) {
+    if (supplyType === "Intrastate" && r.igst > 0 && r.cgst === 0 && r.sgst === 0) {
+      r.cgst = r.igst / 2;
+      r.sgst = r.igst / 2;
+      r.igst = 0;
+    } else if (supplyType === "Interstate" && r.igst === 0 && (r.cgst > 0 || r.sgst > 0)) {
+      r.igst = r.cgst + r.sgst;
+      r.cgst = 0;
+      r.sgst = 0;
+    }
+  }
+
   const rec: InvoiceRecord = {
     fileName: file.name,
     invoiceNumber: extractInvoiceNumber(text),
