@@ -17,6 +17,7 @@ import { FileText, Upload, Download, AlertCircle, CheckCircle2, Loader2, Trash2 
 import type { InvoiceRecord } from "@/lib/gstr1/parser";
 import { parseInvoiceAI } from "@/lib/gstr1/ai-parser";
 import { exportGstr1Workbook } from "@/lib/gstr1/exporter";
+import { exportGstr1Json } from "@/lib/gstr1/json-exporter";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -214,9 +215,20 @@ function Index() {
               <Stat label="Issues" value={totals.issues} warn={totals.issues > 0} />
             </div>
 
-            <div className="mt-6 flex justify-end">
+            <div className="mt-6 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => {
+                const gstin = window.prompt("Your (supplier) GSTIN — 15 chars:")?.trim().toUpperCase() ?? "";
+                if (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9]$/.test(gstin)) {
+                  toast.error("Invalid supplier GSTIN");
+                  return;
+                }
+                const fp = window.prompt("Filing period MMYYYY (blank = use invoice date):", "")?.trim() || undefined;
+                exportGstr1Json(records, { supplierGstin: gstin, filingPeriod: fp });
+              }}>
+                <Download className="mr-2 h-4 w-4" /> Export GSTR-1 JSON
+              </Button>
               <Button onClick={() => exportGstr1Workbook(records)}>
-                <Download className="mr-2 h-4 w-4" /> Export GSTR-1 Excel
+                <Download className="mr-2 h-4 w-4" /> Export GSTR-1 CSV
               </Button>
             </div>
 
