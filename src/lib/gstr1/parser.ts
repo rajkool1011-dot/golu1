@@ -281,21 +281,32 @@ function extractRateSplits(text: string): RateSplit[] {
     let mm;
     while ((mm = re.exec(text))) {
       let rate = parseFloat(mm[1]);
+      const perLegRate = kind === "i" ? rate : rate; // rate as written
       if (kind !== "i") rate = rate * 2;
       if (!validRates.includes(Math.round(rate))) continue;
       const first = num(mm[2]);
       const second = mm[3] ? num(mm[3]) : null;
       const b = ensure(Math.round(rate));
+      // If two numbers present, only treat them as (taxable, tax) when
+      // tax ≈ taxable * perLegRate/100 (±20%). Otherwise the second number
+      // is probably from an adjacent column — fall back to single-amount.
+      let taxable: number | null = null;
+      let tax: number;
       if (second !== null) {
-        b.taxableValue = Math.max(b.taxableValue, first);
-        if (kind === "i") b.igst += second;
-        else if (kind === "c") b.cgst += second;
-        else b.sgst += second;
+        const expected = (first * perLegRate) / 100;
+        if (Math.abs(second - expected) <= Math.max(1, expected * 0.2)) {
+          taxable = first;
+          tax = second;
+        } else {
+          tax = first;
+        }
       } else {
-        if (kind === "i") b.igst += first;
-        else if (kind === "c") b.cgst += first;
-        else b.sgst += first;
+        tax = first;
       }
+      if (taxable !== null) b.taxableValue = Math.max(b.taxableValue, taxable);
+      if (kind === "i") b.igst += tax;
+      else if (kind === "c") b.cgst += tax;
+      else b.sgst += tax;
     }
   };
   runPct(withPct("IGST"), "i");
