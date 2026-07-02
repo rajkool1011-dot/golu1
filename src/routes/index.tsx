@@ -65,7 +65,7 @@ function Index() {
     const out: InvoiceRecord[] = [];
     for (let i = 0; i < files.length; i++) {
       try {
-        const rec = await parseInvoicePdf(files[i]);
+        const rec = await parseInvoiceAI(files[i]);
         out.push(rec);
       } catch (e) {
         out.push({
