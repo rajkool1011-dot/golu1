@@ -1,6 +1,6 @@
 import { extractInvoiceWithAI } from "./extract.functions";
 import type { InvoiceRecord, RateSplit } from "./parser";
-import { stateFromGstin } from "./states";
+import { stateFromGstin, normalizePlaceOfSupply, STATE_CODES } from "./states";
 
 async function fileToBase64(file: File): Promise<string> {
   const buf = await file.arrayBuffer();
