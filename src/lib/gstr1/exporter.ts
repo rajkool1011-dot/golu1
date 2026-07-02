@@ -45,10 +45,18 @@ function invoiceType(r: InvoiceRecord): string {
 export function exportGstr1Workbook(records: InvoiceRecord[]): void {
   const rows: Record<string, string | number>[] = [];
 
-  for (const r of records) {
+  // The B2B, SEZ, DE section only accepts invoices with a valid recipient GSTIN.
+  // B2C rows here cause the offline utility to reject the whole file with
+  // "all rows have invalid data / wrong section file".
+  const b2b = records.filter(
+    (r) => r.category === "B2B" && !!r.customerGstin && /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9]$/.test(r.customerGstin),
+  );
+
+  for (const r of b2b) {
     const splits = r.rateSplits.length
       ? r.rateSplits
       : [{ rate: 0, taxableValue: 0, igst: 0, cgst: 0, sgst: 0 }];
+
     for (const s of splits) {
       rows.push({
         "GSTIN/UIN of Recipient": r.customerGstin ?? "",
