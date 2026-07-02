@@ -163,85 +163,108 @@ function extractInvoiceValue(text: string): number | null {
  * with taxable / tax amounts. Supports both split rows (CGST+SGST) and IGST rows.
  */
 function extractRateSplits(text: string): RateSplit[] {
-  const rates = [0, 3, 5, 12, 18, 28];
+  const validRates = [0, 3, 5, 12, 18, 28];
   const bucket = new Map<number, RateSplit>();
-
-  // Heuristic 1: explicit IGST / CGST / SGST lines with %.
-  //   "IGST 18% 1000.00 180.00"  or  "CGST 9% 90.00" + "SGST 9% 90.00"
-  const igstRe = /IGST[^\n]*?(\d{1,2}(?:\.\d+)?)\s*%[^\n]*?([\d,]+\.\d{2})(?:[^\n]*?([\d,]+\.\d{2}))?/gi;
-  const cgstRe = /CGST[^\n]*?(\d{1,2}(?:\.\d+)?)\s*%[^\n]*?([\d,]+\.\d{2})(?:[^\n]*?([\d,]+\.\d{2}))?/gi;
-  const sgstRe = /SGST[^\n]*?(\d{1,2}(?:\.\d+)?)\s*%[^\n]*?([\d,]+\.\d{2})(?:[^\n]*?([\d,]+\.\d{2}))?/gi;
-
   const ensure = (rate: number) => {
     if (!bucket.has(rate))
       bucket.set(rate, { rate, taxableValue: 0, igst: 0, cgst: 0, sgst: 0 });
     return bucket.get(rate)!;
   };
+  const AMT = "([\\d,]+(?:\\.\\d{1,2})?)";
 
+  // Heuristic 1: explicit IGST / CGST / SGST with % on same line.
+  const withPct = (label: string) =>
+    new RegExp(`${label}[^\\n]{0,40}?(\\d{1,2}(?:\\.\\d+)?)\\s*%[^\\n]{0,60}?${AMT}(?:[^\\n]{0,40}?${AMT})?`, "gi");
+  const runPct = (re: RegExp, kind: "i" | "c" | "s") => {
+    let mm;
+    while ((mm = re.exec(text))) {
+      let rate = parseFloat(mm[1]);
+      if (kind !== "i") rate = rate * 2;
+      if (!validRates.includes(Math.round(rate))) continue;
+      const first = num(mm[2]);
+      const second = mm[3] ? num(mm[3]) : null;
+      const b = ensure(Math.round(rate));
+      if (second !== null) {
+        b.taxableValue = Math.max(b.taxableValue, first);
+        if (kind === "i") b.igst += second;
+        else if (kind === "c") b.cgst += second;
+        else b.sgst += second;
+      } else {
+        if (kind === "i") b.igst += first;
+        else if (kind === "c") b.cgst += first;
+        else b.sgst += first;
+      }
+    }
+  };
+  runPct(withPct("IGST"), "i");
+  runPct(withPct("CGST"), "c");
+  runPct(withPct("SGST|UTGST"), "s");
+
+  // Heuristic 2: tax-summary table row with rate + amounts.
+  const rowRe = new RegExp(
+    `(?:^|\\s)(0|3|5|12|18|28)(?:\\.0+)?\\s*%?\\s+${AMT}\\s+${AMT}(?:\\s+${AMT})?(?:\\s+${AMT})?`,
+    "gm",
+  );
   let m;
-  while ((m = igstRe.exec(text))) {
-    const rate = parseFloat(m[1]);
-    const first = num(m[2]);
-    const second = m[3] ? num(m[3]) : null;
-    // If two numbers on line, first=taxable, second=igst; else it's the tax amt
-    const b = ensure(rate);
-    if (second !== null) {
-      b.taxableValue += first;
-      b.igst += second;
-    } else {
-      b.igst += first;
-    }
-  }
-  while ((m = cgstRe.exec(text))) {
-    const halfRate = parseFloat(m[1]);
-    const rate = halfRate * 2;
-    const first = num(m[2]);
-    const second = m[3] ? num(m[3]) : null;
-    const b = ensure(rate);
-    if (second !== null) {
-      b.taxableValue += first;
-      b.cgst += second;
-    } else {
-      b.cgst += first;
-    }
-  }
-  while ((m = sgstRe.exec(text))) {
-    const halfRate = parseFloat(m[1]);
-    const rate = halfRate * 2;
-    const first = num(m[2]);
-    const second = m[3] ? num(m[3]) : null;
-    const b = ensure(rate);
-    if (second !== null) {
-      // Prefer whichever gives non-zero taxable; keep max
-      if (b.taxableValue < first) b.taxableValue = first;
-      b.sgst += second;
-    } else {
-      b.sgst += first;
-    }
-  }
-
-  // Heuristic 2: tax-summary table row. Rate may or may not have `%`.
-  //   "18%  10000.00  0.00  900.00  900.00"  or  "18  10000.00  900.00  900.00"
-  const rowRe = /(?:^|\s)(0|3|5|12|18|28)(?:\.0+)?\s*%?\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})(?:\s+([\d,]+\.\d{2}))?/g;
-
   while ((m = rowRe.exec(text))) {
     const rate = parseFloat(m[1]);
-    if (!rates.includes(Math.round(rate))) continue;
-    const taxable = num(m[2]);
-    const a = num(m[3]);
-    const b = num(m[4]);
-    const c = m[5] ? num(m[5]) : null;
+    if (!validRates.includes(Math.round(rate))) continue;
+    const nums = [m[2], m[3], m[4], m[5]].filter(Boolean).map(num);
+    if (nums.length < 2) continue;
+    const taxable = nums[0];
+    if (taxable <= 0) continue;
     const rec = ensure(rate);
     rec.taxableValue = Math.max(rec.taxableValue, taxable);
-    // If 4 amounts (taxable, IGST, CGST, SGST) present
-    if (c !== null) {
-      rec.igst += a;
-      rec.cgst += b;
-      rec.sgst += c;
+    if (nums.length >= 4) {
+      rec.igst += nums[1];
+      rec.cgst += nums[2];
+      rec.sgst += nums[3];
+    } else if (nums.length === 3) {
+      const half = rate / 2;
+      const expectedHalf = (taxable * half) / 100;
+      if (Math.abs(nums[1] - expectedHalf) < Math.max(2, expectedHalf * 0.05)) {
+        rec.cgst += nums[1];
+        rec.sgst += nums[2];
+      } else {
+        rec.igst += nums[1];
+      }
     } else {
-      // (taxable, CGST, SGST) — intrastate
-      rec.cgst += a;
-      rec.sgst += b;
+      const expectedIgst = (taxable * rate) / 100;
+      if (Math.abs(nums[1] - expectedIgst) < Math.max(2, expectedIgst * 0.05)) {
+        rec.igst += nums[1];
+      } else {
+        rec.cgst += nums[1];
+        rec.sgst += nums[1];
+      }
+    }
+  }
+
+  // Heuristic 3: tax lines WITHOUT % — infer rate from taxable subtotal.
+  if (bucket.size === 0) {
+    const grab = (label: string): number => {
+      const re = new RegExp(`${label}[^A-Za-z0-9\\n]{0,20}(?:Rs\\.?|₹|INR)?\\s*${AMT}`, "gi");
+      let total = 0;
+      let mm;
+      while ((mm = re.exec(text))) total += num(mm[1]);
+      return total;
+    };
+    const igst = grab("IGST");
+    const cgst = grab("CGST");
+    const sgst = grab("SGST|UTGST");
+    const taxableM = text.match(/(?:Taxable\s*(?:Value|Amount)|Sub[\s-]*Total)[^\n]{0,40}?([\d,]+\.\d{2})/i);
+    const taxable = taxableM ? num(taxableM[1]) : 0;
+    const tax = igst + cgst + sgst;
+    if (taxable > 0 && tax > 0) {
+      const inferred = Math.round((tax / taxable) * 100);
+      const rate = validRates.reduce(
+        (p, c) => (Math.abs(c - inferred) < Math.abs(p - inferred) ? c : p),
+        18,
+      );
+      const b = ensure(rate);
+      b.taxableValue = taxable;
+      b.igst = igst;
+      b.cgst = cgst;
+      b.sgst = sgst;
     }
   }
 
