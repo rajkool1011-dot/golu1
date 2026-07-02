@@ -1,6 +1,6 @@
 import { extractInvoiceWithAI } from "./extract.functions";
 import type { InvoiceRecord, RateSplit } from "./parser";
-import { stateFromGstin } from "./states";
+import { stateFromGstin, normalizePlaceOfSupply, STATE_CODES } from "./states";
 
 async function fileToBase64(file: File): Promise<string> {
   const buf = await file.arrayBuffer();
@@ -53,7 +53,15 @@ export async function parseInvoiceAI(file: File): Promise<InvoiceRecord> {
     invoiceDate: ai.invoice_date?.trim() || null,
     customerGstin,
     customerName: ai.customer_name?.trim() || null,
-    placeOfSupply: ai.place_of_supply?.trim() || null,
+    placeOfSupply:
+      normalizePlaceOfSupply(ai.place_of_supply) ??
+      (customerGstin
+        ? (() => {
+            const code = customerGstin.slice(0, 2);
+            const name = STATE_CODES[code];
+            return name ? `${code}-${name}` : null;
+          })()
+        : null),
     invoiceValue: ai.invoice_value ?? null,
     supplierGstin: null,
     supplierState: customerGstin ? stateFromGstin(customerGstin) : null,

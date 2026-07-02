@@ -49,6 +49,26 @@ export function stateFromGstin(gstin: string): string | null {
   return code ? STATE_CODES[code] ?? null : null;
 }
 
+/** Normalize any state string to "CC-State Name" (e.g. "37-Andhra Pradesh"). */
+export function normalizePlaceOfSupply(input: string | null | undefined): string | null {
+  if (!input) return null;
+  const raw = input.trim();
+  if (!raw) return null;
+  // Already in "CC-Name" or "CC Name" form → normalize separator.
+  const withCode = raw.match(/^(\d{1,2})\s*[-–.\s]\s*(.+)$/);
+  if (withCode) {
+    const code = withCode[1].padStart(2, "0");
+    const name = STATE_CODES[code] ?? withCode[2].trim();
+    return `${code}-${name}`;
+  }
+  // Plain state name → look up code.
+  const norm = raw.toLowerCase().replace(/[^a-z]/g, "");
+  for (const [code, name] of Object.entries(STATE_CODES)) {
+    if (name.toLowerCase().replace(/[^a-z]/g, "") === norm) return `${code}-${name}`;
+  }
+  return raw;
+}
+
 export function isValidGstin(gstin: string): boolean {
   if (!gstin || gstin.length !== 15) return false;
   if (!/^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]$/.test(gstin)) return false;
