@@ -302,6 +302,8 @@ function extractRateSplits(text: string): RateSplit[] {
   runPct(withPct("CGST"), "c");
   runPct(withPct("SGST|UTGST"), "s");
 
+  const populatedByPct = new Set(bucket.keys());
+
   // Heuristic 2: tax-summary table row with rate + amounts.
   const rowRe = new RegExp(
     `(?:^|\\s)(0|3|5|12|18|28)(?:\\.0+)?\\s*%?\\s+${AMT}\\s+${AMT}(?:\\s+${AMT})?(?:\\s+${AMT})?`,
@@ -311,10 +313,18 @@ function extractRateSplits(text: string): RateSplit[] {
   while ((m = rowRe.exec(text))) {
     const rate = parseFloat(m[1]);
     if (!validRates.includes(Math.round(rate))) continue;
+    if (populatedByPct.has(Math.round(rate))) continue; // avoid double-counting
     const nums = [m[2], m[3], m[4], m[5]].filter(Boolean).map(num);
     if (nums.length < 2) continue;
     const taxable = nums[0];
     if (taxable <= 0) continue;
+    // Sanity: taxable must be strictly larger than any tax column in the row.
+    const maxTax = Math.max(...nums.slice(1));
+    if (taxable <= maxTax) continue;
+    // Sanity: total tax in the row should be within ~15% of taxable * rate/100.
+    const expectedTotalTax = (taxable * rate) / 100;
+    const totalTaxInRow = nums.slice(1).reduce((a, b) => a + b, 0);
+    if (rate > 0 && Math.abs(totalTaxInRow - expectedTotalTax) > Math.max(2, expectedTotalTax * 0.15)) continue;
     const rec = ensure(rate);
     rec.taxableValue = Math.max(rec.taxableValue, taxable);
     if (nums.length >= 4) {
@@ -328,7 +338,7 @@ function extractRateSplits(text: string): RateSplit[] {
         rec.cgst += nums[1];
         rec.sgst += nums[2];
       } else {
-        rec.igst += nums[1];
+        rec.igst += nums[1] + nums[2];
       }
     } else {
       const expectedIgst = (taxable * rate) / 100;
