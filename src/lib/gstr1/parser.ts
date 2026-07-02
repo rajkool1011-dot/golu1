@@ -220,9 +220,10 @@ function extractRateSplits(text: string): RateSplit[] {
     }
   }
 
-  // Heuristic 2: tax-summary table with columns "Rate | Taxable | IGST | CGST | SGST"
-  //   e.g. "18%  10000.00  0.00  900.00  900.00"
-  const rowRe = /(\d{1,2}(?:\.\d+)?)\s*%\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})(?:\s+([\d,]+\.\d{2}))?/g;
+  // Heuristic 2: tax-summary table row. Rate may or may not have `%`.
+  //   "18%  10000.00  0.00  900.00  900.00"  or  "18  10000.00  900.00  900.00"
+  const rowRe = /(?:^|\s)(0|3|5|12|18|28)(?:\.0+)?\s*%?\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})(?:\s+([\d,]+\.\d{2}))?/g;
+
   while ((m = rowRe.exec(text))) {
     const rate = parseFloat(m[1]);
     if (!rates.includes(Math.round(rate))) continue;
