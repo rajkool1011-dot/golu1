@@ -33,23 +33,42 @@ export interface InvoiceRecord {
 async function readPdfText(file: File): Promise<string> {
   const buf = await file.arrayBuffer();
   const pdf = await (pdfjsLib as any).getDocument({ data: buf }).promise;
+  const Y_TOL = 3;
   const out: string[] = [];
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
-    // Preserve some layout by grouping items on the same line via y-coordinate
-    const items = content.items as Array<{ str: string; transform: number[] }>;
-    const lines = new Map<number, string[]>();
+    const items = content.items as Array<{ str: string; transform: number[]; width?: number }>;
+    const lineMap = new Map<number, Array<{ str: string; x: number; width: number }>>();
     for (const it of items) {
-      const y = Math.round(it.transform[5]);
-      if (!lines.has(y)) lines.set(y, []);
-      lines.get(y)!.push(it.str);
+      if (!it.str || !it.str.trim()) continue;
+      const yKey = Math.round(it.transform[5] / Y_TOL) * Y_TOL;
+      if (!lineMap.has(yKey)) lineMap.set(yKey, []);
+      lineMap.get(yKey)!.push({
+        str: it.str,
+        x: it.transform[4],
+        width: it.width ?? it.str.length * 5,
+      });
     }
-    const sorted = [...lines.entries()].sort((a, b) => b[0] - a[0]);
-    out.push(sorted.map(([, arr]) => arr.join(" ")).join("\n"));
+    const sorted = [...lineMap.entries()]
+      .sort((a, b) => b[0] - a[0])
+      .map(([, arr]) => {
+        arr.sort((a, b) => a.x - b.x);
+        let line = "";
+        for (let j = 0; j < arr.length; j++) {
+          if (j > 0) {
+            const gap = arr[j].x - (arr[j - 1].x + arr[j - 1].width);
+            line += gap > 10 ? "  " : gap > 2 ? " " : "";
+          }
+          line += arr[j].str;
+        }
+        return line;
+      });
+    out.push(sorted.join("\n"));
   }
   return out.join("\n");
 }
+
 
 function num(s: string): number {
   return parseFloat(s.replace(/,/g, "").replace(/[^\d.\-]/g, "")) || 0;
@@ -77,18 +96,24 @@ function extractInvoiceNumber(text: string): string | null {
 }
 
 function extractInvoiceDate(text: string): string | null {
+  // Try label + value on same line OR next line (up to ~40 chars away)
   const patterns = [
-    /(?:Invoice|Bill|Dated?)\s*Date\s*[:\-]?\s*([0-3]?\d[\/\-\.][01]?\d[\/\-\.](?:20)?\d{2})/i,
-    /Date\s*[:\-]?\s*([0-3]?\d[\/\-\.][01]?\d[\/\-\.](?:20)?\d{2})/i,
-    /Dated?\s*[:\-]?\s*([0-3]?\d\s+[A-Za-z]{3,9}\s+\d{2,4})/i,
-    /([0-3]?\d[\/\-\.][01]?\d[\/\-\.]20\d{2})/,
+    /(?:Invoice|Bill|Doc(?:ument)?)\s*Date[\s:\-]*([0-3]?\d[\/\-.\s][01]?\d[\/\-.\s](?:20)?\d{2})/i,
+    /(?:Invoice|Bill|Doc(?:ument)?)\s*Date[\s:\-]*([0-3]?\d[\s\-][A-Za-z]{3,9}[\s\-]\d{2,4})/i,
+    /\bDated?[\s:\-]*([0-3]?\d[\/\-.\s][01]?\d[\/\-.\s](?:20)?\d{2})/i,
+    /\bDated?[\s:\-]*([0-3]?\d[\s\-][A-Za-z]{3,9}[\s\-]\d{2,4})/i,
+    /\bDate[\s:\-]*([0-3]?\d[\/\-.\s][01]?\d[\/\-.\s](?:20)?\d{2})/i,
+    // fallback: first date-looking token in doc
+    /([0-3]?\d[\/\-.][01]?\d[\/\-.]20\d{2})/,
+    /([0-3]?\d[\s\-][A-Za-z]{3,9}[\s\-]20\d{2})/,
   ];
   for (const p of patterns) {
     const m = text.match(p);
-    if (m) return m[1].trim();
+    if (m) return m[1].replace(/\s+/g, " ").trim();
   }
   return null;
 }
+
 
 function extractPlaceOfSupply(text: string): string | null {
   const m = text.match(/Place\s*of\s*Supply\s*[:\-]?\s*([A-Za-z0-9\-\s&()]+?)(?:\n|State|GSTIN|\(|$)/i);
@@ -115,16 +140,23 @@ function extractCustomerName(text: string): string | null {
 }
 
 function extractInvoiceValue(text: string): number | null {
-  const patterns = [
-    /(?:Grand\s*Total|Invoice\s*Total|Total\s*Invoice\s*Value|Total\s*Amount|Bill\s*Total|Net\s*Payable)\s*[:\-]?\s*₹?\s*(-?[\d,]+\.?\d*)/i,
-    /Total\s*[:\-]?\s*₹?\s*(-?[\d,]+\.\d{2})\s*$/im,
-  ];
-  for (const p of patterns) {
-    const m = text.match(p);
-    if (m) return num(m[1]);
+  const labels =
+    "(?:Grand\\s*Total|Invoice\\s*Total|Total\\s*Invoice\\s*Value|Total\\s*Amount|Bill\\s*Total|Net\\s*(?:Payable|Amount)|Amount\\s*Payable|Amount\\s*Chargeable(?:\\s*\\(in\\s*words\\))?|Balance\\s*Due|Total)";
+  // Look at each occurrence of a label and take the last numeric amount within ~60 chars
+  const re = new RegExp(`${labels}[^\\n\\r]{0,80}?(?:₹|Rs\\.?|INR)?\\s*(-?[\\d,]+\\.\\d{2})`, "gi");
+  let best: number | null = null;
+  let m;
+  while ((m = re.exec(text))) {
+    const v = num(m[1]);
+    if (v > (best ?? 0)) best = v;
   }
+  if (best !== null) return best;
+  // Fallback: largest currency-formatted number in the doc
+  const amounts = [...text.matchAll(/(?:₹|Rs\.?|INR)\s*(-?[\d,]+\.\d{2})/g)].map((x) => num(x[1]));
+  if (amounts.length) return Math.max(...amounts);
   return null;
 }
+
 
 /**
  * Detect rate splits. Looks for GST rate percentages (5,12,18,28) associated
@@ -188,9 +220,10 @@ function extractRateSplits(text: string): RateSplit[] {
     }
   }
 
-  // Heuristic 2: tax-summary table with columns "Rate | Taxable | IGST | CGST | SGST"
-  //   e.g. "18%  10000.00  0.00  900.00  900.00"
-  const rowRe = /(\d{1,2}(?:\.\d+)?)\s*%\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})(?:\s+([\d,]+\.\d{2}))?/g;
+  // Heuristic 2: tax-summary table row. Rate may or may not have `%`.
+  //   "18%  10000.00  0.00  900.00  900.00"  or  "18  10000.00  900.00  900.00"
+  const rowRe = /(?:^|\s)(0|3|5|12|18|28)(?:\.0+)?\s*%?\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})(?:\s+([\d,]+\.\d{2}))?/g;
+
   while ((m = rowRe.exec(text))) {
     const rate = parseFloat(m[1]);
     if (!rates.includes(Math.round(rate))) continue;
