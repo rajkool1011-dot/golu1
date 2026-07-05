@@ -68,6 +68,13 @@ function normalizeUqc(raw: string): string {
   return UQC_FULL[code] ?? UQC_FULL.OTH;
 }
 
+function cleanDescription(raw: string): string {
+  return (raw ?? "")
+    .replace(/[\r\n]+/g, " ")
+    .replace(/^\s*\d+\s*[.)\-:]\s*/, "") // strip leading "1. " / "2) " serial no
+    .trim();
+}
+
 function fmt(n: number): string {
   if (!Number.isFinite(n) || n === 0) return "0";
   return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2)));
@@ -104,7 +111,7 @@ export function exportHsnWorkbook(records: InvoiceRecord[]): void {
       if (!a) {
         a = {
           hsn,
-          description: (h.description ?? "").replace(/[\r\n]+/g, " ").trim(),
+          description: cleanDescription(h.description ?? ""),
           uqc,
           rate,
           quantity: 0,
@@ -122,7 +129,7 @@ export function exportHsnWorkbook(records: InvoiceRecord[]): void {
       a.cgst += Number(h.cgst) || 0;
       a.sgst += Number(h.sgst) || 0;
       a.cess += Number(h.cess) || 0;
-      if (!a.description && h.description) a.description = h.description.trim();
+      if (!a.description && h.description) a.description = cleanDescription(h.description);
     }
   }
 
