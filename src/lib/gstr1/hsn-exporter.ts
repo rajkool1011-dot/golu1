@@ -111,7 +111,7 @@ export function exportHsnWorkbook(records: InvoiceRecord[]): void {
       if (!a) {
         a = {
           hsn,
-          description: (h.description ?? "").replace(/[\r\n]+/g, " ").trim(),
+          description: cleanDescription(h.description ?? ""),
           uqc,
           rate,
           quantity: 0,
