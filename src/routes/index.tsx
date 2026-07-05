@@ -80,6 +80,7 @@ function Index() {
           supplierGstin: null,
           supplierState: null,
           rateSplits: [],
+          hsnItems: [],
           category: "B2C",
           supplyType: "Unknown",
           issues: [`Failed to parse: ${(e as Error).message}`],
