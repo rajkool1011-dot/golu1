@@ -79,6 +79,7 @@ export async function parseInvoiceAI(file: File): Promise<InvoiceRecord> {
     supplierGstin: null,
     supplierState: customerGstin ? stateFromGstin(customerGstin) : null,
     rateSplits,
+    hsnItems,
     category,
     supplyType,
     issues: [],
