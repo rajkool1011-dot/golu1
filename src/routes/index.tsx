@@ -90,6 +90,7 @@ function Index() {
         });
       }
       setProgress(Math.round(((i + 1) / files.length) * 100));
+      if (i < files.length - 1) await new Promise((r) => setTimeout(r, 400));
     }
     // Duplicate detection
     const numCounts = new Map<string, number>();

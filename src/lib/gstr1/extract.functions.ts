@@ -111,14 +111,23 @@ export const extractInvoiceWithAI = createServerFn({ method: "POST" })
       response_format: { type: "json_object" },
     };
 
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Lovable-API-Key": apiKey,
-      },
-      body: JSON.stringify(body),
-    });
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    let res!: Response;
+    const MAX_ATTEMPTS = 5;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Lovable-API-Key": apiKey,
+        },
+        body: JSON.stringify(body),
+      });
+      if (res.status !== 429 || attempt === MAX_ATTEMPTS) break;
+      const retryAfter = Number(res.headers.get("retry-after")) || 0;
+      const wait = retryAfter > 0 ? retryAfter * 1000 : Math.min(30000, 1000 * 2 ** (attempt - 1)) + Math.random() * 500;
+      await sleep(wait);
+    }
 
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
@@ -126,6 +135,7 @@ export const extractInvoiceWithAI = createServerFn({ method: "POST" })
       if (res.status === 402) throw new Error("AI credits exhausted — add credits in workspace billing.");
       throw new Error(`AI Gateway error ${res.status}: ${errText.slice(0, 300)}`);
     }
+
 
     const json = (await res.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
