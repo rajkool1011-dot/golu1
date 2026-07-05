@@ -85,7 +85,14 @@ function csvCell(value: string | number): string {
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
-export function exportHsnWorkbook(records: InvoiceRecord[]): void {
+export function exportHsnWorkbook(
+  records: InvoiceRecord[],
+  opts: { category?: "B2B" | "B2C"; filename?: string } = {},
+): void {
+  const filtered = opts.category
+    ? records.filter((r) => r.category === opts.category)
+    : records;
+  const outName = opts.filename ?? (opts.category ? `hsn_${opts.category.toLowerCase()}.csv` : "hsn.csv");
   interface Agg {
     hsn: string;
     description: string;
@@ -100,7 +107,7 @@ export function exportHsnWorkbook(records: InvoiceRecord[]): void {
   }
   const map = new Map<string, Agg>();
 
-  for (const rec of records) {
+  for (const rec of filtered) {
     for (const h of rec.hsnItems ?? []) {
       const hsn = (h.hsn ?? "").replace(/\D/g, "");
       if (!hsn) continue;
@@ -160,7 +167,7 @@ export function exportHsnWorkbook(records: InvoiceRecord[]): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "hsn.csv";
+  a.download = outName;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
