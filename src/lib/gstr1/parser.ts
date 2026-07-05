@@ -455,6 +455,7 @@ export async function parseInvoicePdf(file: File): Promise<InvoiceRecord> {
     supplierGstin,
     supplierState,
     rateSplits,
+    hsnItems: [],
     category,
     supplyType,
     issues: [],
