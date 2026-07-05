@@ -2,9 +2,36 @@ import type { InvoiceRecord } from "./parser";
 
 const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9]$/;
 
-function fpFromDate(d: string | null | undefined): string | null {
+const MONTHS: Record<string, string> = {
+  JAN: "01", JANUARY: "01", FEB: "02", FEBRUARY: "02", MAR: "03", MARCH: "03",
+  APR: "04", APRIL: "04", MAY: "05", JUN: "06", JUNE: "06", JUL: "07", JULY: "07",
+  AUG: "08", AUGUST: "08", SEP: "09", SEPT: "09", SEPTEMBER: "09",
+  OCT: "10", OCTOBER: "10", NOV: "11", NOVEMBER: "11", DEC: "12", DECEMBER: "12",
+};
+
+function normalizeDate(d: string | null | undefined): string | null {
   if (!d) return null;
-  const m = d.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  const s = d.trim();
+  let m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{2}|\d{4})$/);
+  if (m) {
+    const yy = m[3].length === 2 ? `20${m[3]}` : m[3];
+    return `${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}-${yy}`;
+  }
+  m = s.match(/^(\d{1,2})[-\/\s]([A-Za-z]+)[-\/\s](\d{2}|\d{4})$/);
+  if (m) {
+    const mm = MONTHS[m[2].toUpperCase()];
+    if (mm) {
+      const yy = m[3].length === 2 ? `20${m[3]}` : m[3];
+      return `${m[1].padStart(2, "0")}-${mm}-${yy}`;
+    }
+  }
+  return null;
+}
+
+function fpFromDate(d: string | null | undefined): string | null {
+  const n = normalizeDate(d);
+  if (!n) return null;
+  const m = n.match(/^(\d{2})-(\d{2})-(\d{4})$/);
   return m ? `${m[2]}${m[3]}` : null;
 }
 
@@ -68,7 +95,7 @@ export function buildGstr1Json(records: InvoiceRecord[], opts: JsonExportOptions
 
       return {
         inum: r.invoiceNumber ?? "",
-        idt: r.invoiceDate ?? "",
+        idt: normalizeDate(r.invoiceDate) ?? r.invoiceDate ?? "",
         val: round2(Number(r.invoiceValue ?? 0)),
         pos: posCode(r.placeOfSupply, r.customerGstin) ?? "",
         rchrg: "N",
