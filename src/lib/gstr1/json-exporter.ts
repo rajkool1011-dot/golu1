@@ -95,7 +95,7 @@ export function buildGstr1Json(records: InvoiceRecord[], opts: JsonExportOptions
 
       return {
         inum: r.invoiceNumber ?? "",
-        idt: r.invoiceDate ?? "",
+        idt: normalizeDate(r.invoiceDate) ?? r.invoiceDate ?? "",
         val: round2(Number(r.invoiceValue ?? 0)),
         pos: posCode(r.placeOfSupply, r.customerGstin) ?? "",
         rchrg: "N",
