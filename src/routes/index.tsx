@@ -311,6 +311,10 @@ function Index() {
               </Table>
             </Card>
 
+            <GstDashboard records={records} />
+
+
+
             {records.some((r) => r.issues.length) && (
               <Card className="mt-4 p-4">
                 <div className="mb-2 flex items-center gap-2 text-sm font-medium">
