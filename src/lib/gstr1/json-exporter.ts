@@ -23,12 +23,29 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+async function sha256Hex(s: string): Promise<string> {
+  const buf = new TextEncoder().encode(s);
+  const hash = await crypto.subtle.digest("SHA-256", buf);
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/** Today as DD-MM-YYYY. */
+function todayDMY(): string {
+  const d = new Date();
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${dd}-${mm}-${d.getFullYear()}`;
+}
+
 export interface JsonExportOptions {
   supplierGstin: string;
   filingPeriod?: string; // MMYYYY; defaults to first invoice's period
+  filingType?: "Q" | "M";
 }
 
-export function buildGstr1Json(records: InvoiceRecord[], opts: JsonExportOptions) {
+export async function buildGstr1Json(records: InvoiceRecord[], opts: JsonExportOptions) {
   const b2b = records.filter(
     (r) => r.category === "B2B" && r.customerGstin && GSTIN_PATTERN.test(r.customerGstin.trim()),
   );
@@ -47,51 +64,69 @@ export function buildGstr1Json(records: InvoiceRecord[], opts: JsonExportOptions
     byCtin.set(ctin, arr);
   }
 
-  const b2bBlock = Array.from(byCtin.entries()).map(([ctin, invs]) => ({
-    ctin,
-    inv: invs.map((r) => {
-      const itms = r.rateSplits
-        .filter((s) => Number(s.taxableValue) > 0)
-        .map((s, i) => {
-          const rate = Number(s.rate);
-          const num = Math.round(rate * 100) + (i + 1);
-          const iamt = round2(s.igst);
-          const camt = round2(s.cgst);
-          const samt = round2(s.sgst);
-          const itm_det: Record<string, number> = {
-            txval: round2(s.taxableValue),
-            rt: rate,
-            csamt: 0,
-          };
-          if (iamt > 0) itm_det.iamt = iamt;
-          if (camt > 0) itm_det.camt = camt;
-          if (samt > 0) itm_det.samt = samt;
-          return { num, itm_det };
-        });
+  const b2bBlock = await Promise.all(
+    Array.from(byCtin.entries()).map(async ([ctin, invs]) => ({
+      ctin,
+      cfs: "N",
+      inv: await Promise.all(
+        invs.map(async (r) => {
+          const itms = r.rateSplits
+            .filter((s) => Number(s.taxableValue) > 0)
+            .map((s, i) => {
+              const rate = Number(s.rate);
+              const num = Math.round(rate * 100) + (i + 1);
+              const iamt = round2(s.igst);
+              const camt = round2(s.cgst);
+              const samt = round2(s.sgst);
+              const itm_det: Record<string, number> = {
+                rt: rate,
+                txval: round2(s.taxableValue),
+              };
+              if (iamt > 0) itm_det.iamt = iamt;
+              if (camt > 0) itm_det.camt = camt;
+              if (samt > 0) itm_det.samt = samt;
+              return { num, itm_det };
+            });
 
-      return {
-        inum: r.invoiceNumber ?? "",
-        idt: r.invoiceDate ?? "",
-        val: round2(Number(r.invoiceValue ?? 0)),
-        pos: posCode(r.placeOfSupply, r.customerGstin) ?? "",
-        rchrg: "N",
-        inv_typ: "R",
-        itms,
-      };
-    }),
-  }));
+          const pos = posCode(r.placeOfSupply, r.customerGstin) ?? "";
+          const inum = r.invoiceNumber ?? "";
+          const idt = r.invoiceDate ?? "";
+          const val = round2(Number(r.invoiceValue ?? 0));
+          const chksum = await sha256Hex(
+            `${ctin}|${inum}|${idt}|${val}|${pos}|${JSON.stringify(itms)}`,
+          );
+
+          return {
+            val,
+            itms,
+            inv_typ: "R",
+            flag: "U",
+            updby: "S",
+            pos,
+            idt,
+            rchrg: "N",
+            inum,
+            cflag: "N",
+            chksum,
+          };
+        }),
+      ),
+    })),
+  );
 
   return {
     gstin: opts.supplierGstin.trim().toUpperCase(),
     fp,
-    version: "GST3.2.3",
-    hash: "hash",
+    filing_typ: opts.filingType ?? "Q",
+    gt: 0.0,
+    cur_gt: 0.0,
     b2b: b2bBlock,
+    fil_dt: todayDMY(),
   };
 }
 
-export function exportGstr1Json(records: InvoiceRecord[], opts: JsonExportOptions): void {
-  const payload = buildGstr1Json(records, opts);
+export async function exportGstr1Json(records: InvoiceRecord[], opts: JsonExportOptions): Promise<void> {
+  const payload = await buildGstr1Json(records, opts);
   const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
