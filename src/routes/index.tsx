@@ -233,6 +233,9 @@ function Index() {
               <Button variant="outline" onClick={() => exportHsnWorkbook(records)}>
                 <Download className="mr-2 h-4 w-4" /> Export HSN CSV
               </Button>
+              <Button variant="outline" onClick={() => exportB2cWorkbook(records)}>
+                <Download className="mr-2 h-4 w-4" /> Export B2C CSV
+              </Button>
               <Button onClick={() => exportGstr1Workbook(records)}>
                 <Download className="mr-2 h-4 w-4" /> Export GSTR-1 CSV
               </Button>
