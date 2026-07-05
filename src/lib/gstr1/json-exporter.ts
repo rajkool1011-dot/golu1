@@ -72,9 +72,9 @@ export async function buildGstr1Json(records: InvoiceRecord[], opts: JsonExportO
         invs.map(async (r) => {
           const itms = r.rateSplits
             .filter((s) => Number(s.taxableValue) > 0)
-            .map((s, i) => {
+            .map((s) => {
               const rate = Number(s.rate);
-              const num = Math.round(rate * 100) + (i + 1);
+              const num = Math.round(rate * 100);
               const iamt = round2(s.igst);
               const camt = round2(s.cgst);
               const samt = round2(s.sgst);
