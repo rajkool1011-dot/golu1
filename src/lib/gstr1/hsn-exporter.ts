@@ -29,19 +29,32 @@ const UQC_ALLOWED = new Set([
 ]);
 
 function normalizeUqc(raw: string): string {
-  const t = raw.trim().toUpperCase();
+  const t = (raw ?? "").trim().toUpperCase().replace(/[^A-Z]/g, "");
   if (!t) return "OTH";
   const map: Record<string, string> = {
-    NOS: "NOS", NO: "NOS", NUMBERS: "NOS", PC: "PCS", PCS: "PCS",
+    NOS: "NOS", NO: "NOS", NUMBER: "NOS", NUMBERS: "NOS",
+    PC: "PCS", PCS: "PCS", PIECE: "PCS", PIECES: "PCS",
     KG: "KGS", KGS: "KGS", KILOGRAM: "KGS", KILOGRAMS: "KGS",
-    MTR: "MTR", METER: "MTR", METRE: "MTR", MTRS: "MTR", M: "MTR",
-    LTR: "LTR", LITRE: "LTR", LITER: "LTR", L: "LTR",
-    BAG: "BAG", BAGS: "BAG", BOX: "BOX", BOTTLE: "BTL", BTL: "BTL",
-    SET: "SET", DOZ: "DOZ", DOZEN: "DOZ", PACK: "PAC", PKT: "PAC",
-    UNIT: "UNT", UNITS: "UNT", TON: "TON", TONS: "TON", ROLL: "ROL",
+    MTR: "MTR", METER: "MTR", METRE: "MTR", MTRS: "MTR", METERS: "MTR", METRES: "MTR", M: "MTR",
+    LTR: "LTR", LITRE: "LTR", LITER: "LTR", LITRES: "LTR", LITERS: "LTR", L: "LTR",
+    ML: "MLT", MLT: "MLT",
+    BAG: "BAG", BAGS: "BAG",
+    BOX: "BOX", BOXES: "BOX",
+    BOTTLE: "BTL", BOTTLES: "BTL", BTL: "BTL",
+    SET: "SET", SETS: "SET",
+    DOZ: "DOZ", DOZEN: "DOZ", DOZENS: "DOZ",
+    PACK: "PAC", PACKS: "PAC", PKT: "PAC", PACKET: "PAC", PAC: "PAC",
+    UNIT: "UNT", UNITS: "UNT", UNT: "UNT",
+    TON: "TON", TONS: "TON", TONNE: "TON", TONNES: "TON",
+    ROLL: "ROL", ROLLS: "ROL", ROL: "ROL",
+    CTN: "CTN", CARTON: "CTN", CARTONS: "CTN",
+    DRUM: "DRM", DRUMS: "DRM", DRM: "DRM",
+    GRAM: "GMS", GRAMS: "GMS", GM: "GMS", GMS: "GMS", G: "GMS",
+    SQF: "SQF", SQFT: "SQF", SQM: "SQM", SQMT: "SQM", SQY: "SQY", SQYD: "SQY",
   };
-  const mapped = map[t] ?? t;
-  return UQC_ALLOWED.has(mapped) ? mapped : `${mapped}-${mapped}`.length && UQC_ALLOWED.has(mapped) ? mapped : (UQC_ALLOWED.has(t) ? t : "OTH");
+  const mapped = map[t];
+  if (mapped) return mapped;
+  return UQC_ALLOWED.has(t) ? t : "OTH";
 }
 
 function fmt(n: number): string {
