@@ -113,7 +113,7 @@ export const extractInvoiceWithAI = createServerFn({ method: "POST" })
 
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
     let res!: Response;
-    const MAX_ATTEMPTS = 5;
+    const MAX_ATTEMPTS = 8;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
@@ -123,11 +123,14 @@ export const extractInvoiceWithAI = createServerFn({ method: "POST" })
         },
         body: JSON.stringify(body),
       });
-      if (res.status !== 429 || attempt === MAX_ATTEMPTS) break;
+      if ((res.status !== 429 && res.status < 500) || attempt === MAX_ATTEMPTS) break;
       const retryAfter = Number(res.headers.get("retry-after")) || 0;
-      const wait = retryAfter > 0 ? retryAfter * 1000 : Math.min(30000, 1000 * 2 ** (attempt - 1)) + Math.random() * 500;
+      const wait = retryAfter > 0
+        ? retryAfter * 1000
+        : Math.min(60000, 2000 * 2 ** (attempt - 1)) + Math.random() * 750;
       await sleep(wait);
     }
+
 
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
