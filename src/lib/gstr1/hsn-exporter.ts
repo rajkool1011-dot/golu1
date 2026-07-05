@@ -129,7 +129,7 @@ export function exportHsnWorkbook(records: InvoiceRecord[]): void {
       a.cgst += Number(h.cgst) || 0;
       a.sgst += Number(h.sgst) || 0;
       a.cess += Number(h.cess) || 0;
-      if (!a.description && h.description) a.description = h.description.trim();
+      if (!a.description && h.description) a.description = cleanDescription(h.description);
     }
   }
 
