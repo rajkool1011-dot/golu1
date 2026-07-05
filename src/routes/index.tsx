@@ -18,6 +18,7 @@ import type { InvoiceRecord } from "@/lib/gstr1/parser";
 import { parseInvoiceAI } from "@/lib/gstr1/ai-parser";
 import { exportGstr1Workbook } from "@/lib/gstr1/exporter";
 import { exportGstr1Json } from "@/lib/gstr1/json-exporter";
+import { exportHsnWorkbook } from "@/lib/gstr1/hsn-exporter";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -80,6 +81,7 @@ function Index() {
           supplierGstin: null,
           supplierState: null,
           rateSplits: [],
+          hsnItems: [],
           category: "B2C",
           supplyType: "Unknown",
           issues: [`Failed to parse: ${(e as Error).message}`],
@@ -226,6 +228,9 @@ function Index() {
                 exportGstr1Json(records, { supplierGstin: gstin, filingPeriod: fp });
               }}>
                 <Download className="mr-2 h-4 w-4" /> Export GSTR-1 JSON
+              </Button>
+              <Button variant="outline" onClick={() => exportHsnWorkbook(records)}>
+                <Download className="mr-2 h-4 w-4" /> Export HSN CSV
               </Button>
               <Button onClick={() => exportGstr1Workbook(records)}>
                 <Download className="mr-2 h-4 w-4" /> Export GSTR-1 CSV

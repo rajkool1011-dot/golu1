@@ -8,19 +8,20 @@ Your task is to extract invoice information with 100% accuracy.
 Rules:
 1. Never guess any value.
 2. Read every field exactly as printed.
-3. Preserve Invoice Number exactly.
-4. Preserve GSTIN exactly.
-5. Preserve Customer Name exactly.
-6. Preserve Invoice Date.
-7. Detect Place of Supply.
-8. Detect whether IGST or CGST+SGST.
-9. Ignore HSN, Quantity, UQC and Item Description.
-10. Group invoice according to GST Rate.
-11. If multiple GST rates exist, create one row for each GST rate.
-12. Verify that: Taxable + GST = Invoice Total.
-13. Return JSON only.
-14. If any field is missing return null.
-15. Never include explanations.
+3. Preserve Invoice Number / GSTIN / Customer Name / Invoice Date exactly.
+4. Detect Place of Supply.
+5. Detect whether IGST or CGST+SGST.
+6. Group invoice according to GST Rate for "rows".
+7. Also extract every HSN/SAC line item into "hsn": one entry per line item.
+   - hsn: the HSN or SAC code as printed (digits only if possible).
+   - description: item description text.
+   - uqc: unit of measure printed on the line (e.g. NOS, KGS, PCS, MTR, BAG). If absent use "OTH".
+   - quantity: numeric quantity of that line.
+   - rate: GST rate % of that line (0/3/5/12/18/28).
+   - taxable_value: taxable amount of that line.
+   - igst / cgst / sgst / cess: tax amounts of that line (0 if not applicable).
+8. Verify Taxable + GST = Invoice Total.
+9. Return JSON only. Missing fields = null. No explanations.
 
 Return this exact JSON shape:
 {
@@ -32,6 +33,9 @@ Return this exact JSON shape:
  "invoice_value": 0,
  "rows": [
    { "rate": 18, "taxable_value": 0, "igst": 0, "cgst": 0, "sgst": 0 }
+ ],
+ "hsn": [
+   { "hsn": "", "description": "", "uqc": "", "quantity": 0, "rate": 18, "taxable_value": 0, "igst": 0, "cgst": 0, "sgst": 0, "cess": 0 }
  ]
 }`;
 
@@ -43,6 +47,19 @@ const RowSchema = z.object({
   sgst: z.number().nullable().default(0),
 });
 
+const HsnSchema = z.object({
+  hsn: z.string().nullable().default(""),
+  description: z.string().nullable().default(""),
+  uqc: z.string().nullable().default(""),
+  quantity: z.number().nullable().default(0),
+  rate: z.number().nullable().default(0),
+  taxable_value: z.number().nullable().default(0),
+  igst: z.number().nullable().default(0),
+  cgst: z.number().nullable().default(0),
+  sgst: z.number().nullable().default(0),
+  cess: z.number().nullable().default(0),
+});
+
 const InvoiceSchema = z.object({
   invoice_no: z.string().nullable(),
   invoice_date: z.string().nullable(),
@@ -51,6 +68,7 @@ const InvoiceSchema = z.object({
   place_of_supply: z.string().nullable(),
   invoice_value: z.number().nullable(),
   rows: z.array(RowSchema).default([]),
+  hsn: z.array(HsnSchema).default([]),
 });
 
 export type ExtractedInvoice = z.infer<typeof InvoiceSchema>;

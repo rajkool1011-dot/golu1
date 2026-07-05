@@ -36,6 +36,19 @@ export async function parseInvoiceAI(file: File): Promise<InvoiceRecord> {
     sgst: Number(r.sgst) || 0,
   }));
 
+  const hsnItems = (ai.hsn ?? []).map((h) => ({
+    hsn: (h.hsn ?? "").toString().trim(),
+    description: (h.description ?? "").toString().trim(),
+    uqc: ((h.uqc ?? "").toString().trim() || "OTH").toUpperCase(),
+    quantity: Number(h.quantity) || 0,
+    rate: Number(h.rate) || 0,
+    taxableValue: Number(h.taxable_value) || 0,
+    igst: Number(h.igst) || 0,
+    cgst: Number(h.cgst) || 0,
+    sgst: Number(h.sgst) || 0,
+    cess: Number(h.cess) || 0,
+  })).filter((h) => h.hsn || h.taxableValue > 0);
+
   const customerGstin = ai.customer_gstin?.toUpperCase().trim() || null;
   const category: "B2B" | "B2C" = customerGstin ? "B2B" : "B2C";
 
@@ -66,6 +79,7 @@ export async function parseInvoiceAI(file: File): Promise<InvoiceRecord> {
     supplierGstin: null,
     supplierState: customerGstin ? stateFromGstin(customerGstin) : null,
     rateSplits,
+    hsnItems,
     category,
     supplyType,
     issues: [],

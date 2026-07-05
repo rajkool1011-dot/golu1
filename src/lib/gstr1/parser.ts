@@ -13,6 +13,19 @@ export interface RateSplit {
   sgst: number;
 }
 
+export interface HsnItem {
+  hsn: string;
+  description: string;
+  uqc: string;
+  quantity: number;
+  rate: number;
+  taxableValue: number;
+  igst: number;
+  cgst: number;
+  sgst: number;
+  cess: number;
+}
+
 export interface InvoiceRecord {
   fileName: string;
   invoiceNumber: string | null;
@@ -24,6 +37,7 @@ export interface InvoiceRecord {
   supplierGstin: string | null;
   supplierState: string | null;
   rateSplits: RateSplit[];
+  hsnItems: HsnItem[];
   category: "B2B" | "B2C";
   supplyType: "Interstate" | "Intrastate" | "Unknown";
   issues: string[];
@@ -441,6 +455,7 @@ export async function parseInvoicePdf(file: File): Promise<InvoiceRecord> {
     supplierGstin,
     supplierState,
     rateSplits,
+    hsnItems: [],
     category,
     supplyType,
     issues: [],
