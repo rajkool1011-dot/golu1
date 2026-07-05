@@ -105,12 +105,52 @@ export function buildGstr1Json(records: InvoiceRecord[], opts: JsonExportOptions
     }),
   }));
 
+  // B2CS aggregation by (pos, rate)
+  const supplierStateCode = opts.supplierGstin.trim().slice(0, 2);
+  const b2c = records.filter((r) => r.category === "B2C");
+  const b2csMap = new Map<string, { pos: string; rt: number; txval: number; iamt: number; camt: number; samt: number }>();
+  for (const r of b2c) {
+    const pos = posCode(r.placeOfSupply, r.customerGstin);
+    if (!pos) continue;
+    for (const s of r.rateSplits) {
+      const txval = Number(s.taxableValue) || 0;
+      if (txval <= 0) continue;
+      const rt = Number(s.rate) || 0;
+      const key = `${pos}||${rt}`;
+      const a = b2csMap.get(key) ?? { pos, rt, txval: 0, iamt: 0, camt: 0, samt: 0 };
+      a.txval += txval;
+      a.iamt += Number(s.igst) || 0;
+      a.camt += Number(s.cgst) || 0;
+      a.samt += Number(s.sgst) || 0;
+      b2csMap.set(key, a);
+    }
+  }
+  const b2csBlock = Array.from(b2csMap.values()).map((a) => {
+    const intra = a.pos === supplierStateCode;
+    const row: Record<string, string | number> = {
+      sply_ty: intra ? "INTRA" : "INTER",
+      rt: a.rt,
+      typ: "OE",
+      pos: a.pos,
+      txval: round2(a.txval),
+    };
+    if (intra) {
+      row.camt = round2(a.camt || (a.txval * a.rt) / 200);
+      row.samt = round2(a.samt || (a.txval * a.rt) / 200);
+    } else {
+      row.iamt = round2(a.iamt || (a.txval * a.rt) / 100);
+    }
+    row.csamt = 0;
+    return row;
+  });
+
   return {
     gstin: opts.supplierGstin.trim().toUpperCase(),
     fp,
     version: "GST3.2.4",
     hash: "hash",
     b2b: b2bBlock,
+    b2cs: b2csBlock,
   };
 }
 
