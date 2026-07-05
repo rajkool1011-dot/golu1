@@ -107,7 +107,7 @@ export function exportHsnWorkbook(
   }
   const map = new Map<string, Agg>();
 
-  for (const rec of records) {
+  for (const rec of filtered) {
     for (const h of rec.hsnItems ?? []) {
       const hsn = (h.hsn ?? "").replace(/\D/g, "");
       if (!hsn) continue;
