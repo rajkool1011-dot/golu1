@@ -19,6 +19,7 @@ import { parseInvoiceAI } from "@/lib/gstr1/ai-parser";
 import { exportGstr1Workbook } from "@/lib/gstr1/exporter";
 import { exportGstr1Json } from "@/lib/gstr1/json-exporter";
 import { exportHsnWorkbook } from "@/lib/gstr1/hsn-exporter";
+import { exportB2cWorkbook } from "@/lib/gstr1/b2c-exporter";
 
 export const Route = createFileRoute("/")({
   head: () => ({
