@@ -85,7 +85,14 @@ function csvCell(value: string | number): string {
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
-export function exportHsnWorkbook(records: InvoiceRecord[]): void {
+export function exportHsnWorkbook(
+  records: InvoiceRecord[],
+  opts: { category?: "B2B" | "B2C"; filename?: string } = {},
+): void {
+  const filtered = opts.category
+    ? records.filter((r) => r.category === opts.category)
+    : records;
+  const outName = opts.filename ?? (opts.category ? `hsn_${opts.category.toLowerCase()}.csv` : "hsn.csv");
   interface Agg {
     hsn: string;
     description: string;
