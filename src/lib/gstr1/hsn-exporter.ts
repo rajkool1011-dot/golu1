@@ -68,6 +68,13 @@ function normalizeUqc(raw: string): string {
   return UQC_FULL[code] ?? UQC_FULL.OTH;
 }
 
+function cleanDescription(raw: string): string {
+  return (raw ?? "")
+    .replace(/[\r\n]+/g, " ")
+    .replace(/^\s*\d+\s*[.)\-:]\s*/, "") // strip leading "1. " / "2) " serial no
+    .trim();
+}
+
 function fmt(n: number): string {
   if (!Number.isFinite(n) || n === 0) return "0";
   return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2)));
