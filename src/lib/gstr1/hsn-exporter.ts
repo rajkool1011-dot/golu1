@@ -21,18 +21,29 @@ const COLUMNS = [
   "Rate",
 ] as const;
 
-const UQC_ALLOWED = new Set([
-  "BAG", "BAL", "BDL", "BKL", "BOU", "BOX", "BTL", "BUN", "CAN", "CBM", "CCM",
-  "CMS", "CTN", "DOZ", "DRM", "GGK", "GMS", "GRS", "GYD", "KGS", "KLR", "KME",
-  "LTR", "MLT", "MTR", "MTS", "NOS", "PAC", "PCS", "PRS", "QTL", "ROL", "SET",
-  "SQF", "SQM", "SQY", "TBS", "TGM", "THD", "TON", "TUB", "UGS", "UNT", "YDS", "OTH",
-]);
+// GSTR-1 UQC list — value must be "CODE-FULLNAME" (e.g. "NOS-NUMBERS", "BAG-BAGS").
+const UQC_FULL: Record<string, string> = {
+  BAG: "BAG-BAGS", BAL: "BAL-BALE", BDL: "BDL-BUNDLES", BKL: "BKL-BUCKLES",
+  BOU: "BOU-BILLIONS OF UNITS", BOX: "BOX-BOX", BTL: "BTL-BOTTLES",
+  BUN: "BUN-BUNCHES", CAN: "CAN-CANS", CBM: "CBM-CUBIC METERS",
+  CCM: "CCM-CUBIC CENTIMETERS", CMS: "CMS-CENTIMETERS", CTN: "CTN-CARTONS",
+  DOZ: "DOZ-DOZENS", DRM: "DRM-DRUMS", GGK: "GGK-GREAT GROSS",
+  GMS: "GMS-GRAMMES", GRS: "GRS-GROSS", GYD: "GYD-GROSS YARDS",
+  KGS: "KGS-KILOGRAMS", KLR: "KLR-KILOLITRE", KME: "KME-KILOMETRE",
+  LTR: "LTR-LITRES", MLT: "MLT-MILILITRE", MTR: "MTR-METERS",
+  MTS: "MTS-METRIC TON", NOS: "NOS-NUMBERS", PAC: "PAC-PACKS",
+  PCS: "PCS-PIECES", PRS: "PRS-PAIRS", QTL: "QTL-QUINTAL", ROL: "ROL-ROLLS",
+  SET: "SET-SETS", SQF: "SQF-SQUARE FEET", SQM: "SQM-SQUARE METERS",
+  SQY: "SQY-SQUARE YARDS", TBS: "TBS-TABLETS", TGM: "TGM-TEN GROSS",
+  TAR: "TAR-TAR", THD: "THD-THOUSANDS", TON: "TON-TONNES", TUB: "TUB-TUBES",
+  UGS: "UGS-US GALLONS", UNT: "UNT-UNITS", YDS: "YDS-YARDS", OTH: "OTH-OTHERS",
+};
 
 function normalizeUqc(raw: string): string {
   const t = (raw ?? "").trim().toUpperCase().replace(/[^A-Z]/g, "");
-  if (!t) return "OTH";
-  const map: Record<string, string> = {
-    NOS: "NOS", NO: "NOS", NUMBER: "NOS", NUMBERS: "NOS",
+  if (!t) return UQC_FULL.OTH;
+  const alias: Record<string, string> = {
+    NO: "NOS", NOS: "NOS", NUMBER: "NOS", NUMBERS: "NOS",
     PC: "PCS", PCS: "PCS", PIECE: "PCS", PIECES: "PCS",
     KG: "KGS", KGS: "KGS", KILOGRAM: "KGS", KILOGRAMS: "KGS",
     MTR: "MTR", METER: "MTR", METRE: "MTR", MTRS: "MTR", METERS: "MTR", METRES: "MTR", M: "MTR",
@@ -51,10 +62,10 @@ function normalizeUqc(raw: string): string {
     DRUM: "DRM", DRUMS: "DRM", DRM: "DRM",
     GRAM: "GMS", GRAMS: "GMS", GM: "GMS", GMS: "GMS", G: "GMS",
     SQF: "SQF", SQFT: "SQF", SQM: "SQM", SQMT: "SQM", SQY: "SQY", SQYD: "SQY",
+    PR: "PRS", PRS: "PRS", PAIR: "PRS", PAIRS: "PRS",
   };
-  const mapped = map[t];
-  if (mapped) return mapped;
-  return UQC_ALLOWED.has(t) ? t : "OTH";
+  const code = alias[t] ?? (UQC_FULL[t] ? t : "OTH");
+  return UQC_FULL[code] ?? UQC_FULL.OTH;
 }
 
 function fmt(n: number): string {
