@@ -21,6 +21,7 @@ import { exportGstr1Json } from "@/lib/gstr1/json-exporter";
 import { exportHsnWorkbook } from "@/lib/gstr1/hsn-exporter";
 import { exportB2cWorkbook } from "@/lib/gstr1/b2c-exporter";
 import { exportDashboardWorkbook } from "@/lib/gstr1/dashboard-exporter";
+import { GstDashboard } from "@/components/GstDashboard";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -309,6 +310,10 @@ function Index() {
                 </TableBody>
               </Table>
             </Card>
+
+            <GstDashboard records={records} />
+
+
 
             {records.some((r) => r.issues.length) && (
               <Card className="mt-4 p-4">
