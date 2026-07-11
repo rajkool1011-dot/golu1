@@ -328,6 +328,34 @@ function extractRateSplits(text: string): RateSplit[] {
   runPct(withPct("CGST"), "c");
   runPct(withPct("SGST|UTGST"), "s");
 
+  // Heuristic 1b: LABEL followed by rate (no % sign) then amount.
+  // Handles: "CGST 9.00 1800.00", "SGST 9 1800.00", "IGST 18.00 3600.00"
+  const withoutPct = (label: string) =>
+    new RegExp(`\\b(?:${label})\\b[^\\n\\dA-Za-z]{0,10}(\\d{1,2}(?:\\.\\d+)?)[^\\n\\d]{1,20}${AMT}`, "gi");
+  const runNoPct = (re: RegExp, kind: "i" | "c" | "s") => {
+    let mm;
+    while ((mm = re.exec(text))) {
+      let rate = parseFloat(mm[1]);
+      if (rate > 28) continue; // likely an amount, not a rate
+      const perLegRate = rate;
+      if (kind !== "i") rate = rate * 2;
+      if (!validRates.includes(Math.round(rate))) continue;
+      const tax = num(mm[2]);
+      if (tax <= 0) continue;
+      const b = ensure(Math.round(rate));
+      // Sanity: reject if this rate was already covered w/ % sign
+      void perLegRate;
+      if (kind === "i") b.igst += tax;
+      else if (kind === "c") b.cgst += tax;
+      else b.sgst += tax;
+    }
+  };
+  if (!populatedByPct.size) {
+    runNoPct(withoutPct("IGST"), "i");
+    runNoPct(withoutPct("CGST"), "c");
+    runNoPct(withoutPct("SGST|UTGST"), "s");
+  }
+
   const populatedByPct = new Set(bucket.keys());
 
   // Heuristic 2: tax-summary table row with rate + amounts.
