@@ -379,30 +379,60 @@ function Index() {
 
             </Card>
 
+            {/* Credits-exhausted banner */}
+            {creditsExhausted && (
+              <Card className="border-destructive/40 bg-destructive/5 p-4 sm:p-5" role="alert">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" aria-hidden="true" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-destructive">
+                      AI credits exhausted
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Further PDF extraction is paused. Add credits in workspace
+                      billing, then click <span className="font-medium">Resume</span> to continue
+                      with the remaining queued files.
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => { setCreditsExhausted(false); void process(); }}
+                    className="shrink-0"
+                  >
+                    Resume
+                  </Button>
+                </div>
+              </Card>
+            )}
+
             {/* File queue */}
             {files.length > 0 && (
               <Card className="p-4 sm:p-5">
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
                   <div className="min-w-0">
                     <div className="truncate text-sm font-semibold">
-                      {files.length} file{files.length === 1 ? "" : "s"} queued
+                      {files.length} file{files.length === 1 ? "" : "s"} in queue
                     </div>
                     <div className="truncate text-xs text-muted-foreground">
-                      Ready to process • PDF, XLSX, XLS or CSV
+                      PDF, XLSX, XLS or CSV
                     </div>
-
                   </div>
                   <div className="flex shrink-0 gap-2">
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => { setFiles([]); setRecords([]); }}
+                      onClick={() => { setFiles([]); setStatuses([]); setRecords([]); setCreditsExhausted(false); }}
                       aria-label="Clear file queue"
                     >
                       <Trash2 className="h-4 w-4" aria-hidden="true" />
                       <span className="hidden sm:inline">Clear</span>
                     </Button>
-                    <Button size="sm" onClick={process} disabled={processing}>
+                    <Button
+                      size="sm"
+                      onClick={process}
+                      disabled={processing || creditsExhausted}
+                    >
                       {processing ? (
                         <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                       ) : (
@@ -420,14 +450,54 @@ function Index() {
                     </div>
                   </div>
                 )}
-                <ul className="mt-3 flex flex-wrap gap-1.5 text-xs text-muted-foreground">
-                  {files.slice(0, 20).map((f) => (
-                    <li key={f.name} className="max-w-[220px] truncate rounded-md bg-muted px-2 py-0.5" title={f.name}>
-                      {f.name}
-                    </li>
-                  ))}
-                  {files.length > 20 && <li>+ {files.length - 20} more…</li>}
-                </ul>
+                <div className="mt-3 max-h-64 overflow-auto rounded-md border">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-muted/60 text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium">File</th>
+                        <th className="w-32 px-3 py-2 text-right font-medium">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {files.map((f, i) => {
+                        const s: FileStatus = statuses[i] ?? "queued";
+                        const styles: Record<FileStatus, string> = {
+                          queued: "bg-muted text-muted-foreground",
+                          processing: "bg-primary/10 text-primary",
+                          retrying: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
+                          completed: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300",
+                          failed: "bg-destructive/10 text-destructive",
+                        };
+                        const label: Record<FileStatus, string> = {
+                          queued: "Queued",
+                          processing: "Processing",
+                          retrying: "Retrying",
+                          completed: "Completed",
+                          failed: "Failed",
+                        };
+                        return (
+                          <tr key={f.name + i} className="border-t">
+                            <td className="max-w-0 px-3 py-2">
+                              <div className="truncate" title={f.name}>{f.name}</div>
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium ${styles[s]}`}>
+                                {s === "processing" || s === "retrying" ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                                ) : s === "completed" ? (
+                                  <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                                ) : s === "failed" ? (
+                                  <AlertCircle className="h-3 w-3" aria-hidden="true" />
+                                ) : null}
+                                {label[s]}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </Card>
             )}
 
