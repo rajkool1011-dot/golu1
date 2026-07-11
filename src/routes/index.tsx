@@ -74,16 +74,19 @@ function Index() {
   const [progress, setProgress] = useState(0);
   const [dragOver, setDragOver] = useState(false);
 
+  const isSupported = (name: string) =>
+    /\.(pdf|xlsx|xls|csv)$/i.test(name);
+
   const onFiles = useCallback((incoming: FileList | File[]) => {
-    const pdfs = Array.from(incoming).filter((f) => f.name.toLowerCase().endsWith(".pdf"));
-    if (!pdfs.length) {
-      toast.error("Please add PDF files");
+    const accepted = Array.from(incoming).filter((f) => isSupported(f.name));
+    if (!accepted.length) {
+      toast.error("Please add PDF or Excel/CSV files");
       return;
     }
     setFiles((prev) => {
       const seen = new Set(prev.map((f) => f.name + f.size));
       const merged = [...prev];
-      for (const f of pdfs) if (!seen.has(f.name + f.size)) merged.push(f);
+      for (const f of accepted) if (!seen.has(f.name + f.size)) merged.push(f);
       return merged;
     });
   }, []);
@@ -94,12 +97,19 @@ function Index() {
     setProgress(0);
     const out: InvoiceRecord[] = [];
     for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const isExcel = /\.(xlsx|xls|csv)$/i.test(f.name);
       try {
-        const rec = await parseInvoiceAI(files[i]);
-        out.push(rec);
+        if (isExcel) {
+          const recs = await importInvoicesFromExcel(f);
+          if (!recs.length) throw new Error("No invoice rows detected in sheet");
+          out.push(...recs);
+        } else {
+          out.push(await parseInvoiceAI(f));
+        }
       } catch (e) {
         out.push({
-          fileName: files[i].name,
+          fileName: f.name,
           invoiceNumber: null,
           invoiceDate: null,
           customerGstin: null,
@@ -117,8 +127,9 @@ function Index() {
         });
       }
       setProgress(Math.round(((i + 1) / files.length) * 100));
-      if (i < files.length - 1) await new Promise((r) => setTimeout(r, 2500));
+      if (!isExcel && i < files.length - 1) await new Promise((r) => setTimeout(r, 2500));
     }
+
     const numCounts = new Map<string, number>();
     for (const r of out) if (r.invoiceNumber) numCounts.set(r.invoiceNumber, (numCounts.get(r.invoiceNumber) ?? 0) + 1);
     for (const r of out)
