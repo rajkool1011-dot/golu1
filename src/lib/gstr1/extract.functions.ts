@@ -154,37 +154,58 @@ function repairTruncatedJson(text: string): string {
 export const extractInvoiceWithAI = createServerFn({ method: "POST" })
   .inputValidator((v: unknown) => Input.parse(v))
   .handler(async ({ data }) => {
-    const apiKey = process.env.LOVABLE_API_KEY;
-    if (!apiKey) throw new Error("Missing LOVABLE_API_KEY");
+    const geminiKey = process.env.GEMINI_API_KEY;
+    const lovableKey = process.env.LOVABLE_API_KEY;
+    if (!geminiKey && !lovableKey) throw new Error("Missing GEMINI_API_KEY or LOVABLE_API_KEY");
 
     const invoiceText = data.text.trim().slice(0, 45000);
-
-    const body = {
-      model: "google/gemini-3-flash-preview",
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        {
-          role: "user",
-          content: `Extract invoice fields from this invoice text (file: ${data.fileName}). Return JSON only.\n\n${invoiceText}`,
-        },
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 8192,
-    };
+    const userPrompt = `Extract invoice fields from this invoice text (file: ${data.fileName}). Return JSON only.\n\n${invoiceText}`;
 
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-    let res!: Response;
     const MAX_ATTEMPTS = 8;
+    let res!: Response;
+    const useGemini = Boolean(geminiKey);
+
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Lovable-API-Key": apiKey,
-          "X-Lovable-AIG-SDK": "vercel-ai-sdk",
-        },
-        body: JSON.stringify(body),
-      });
+      if (useGemini) {
+        res = await fetch(
+          "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-goog-api-key": geminiKey!,
+            },
+            body: JSON.stringify({
+              systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+              contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+              generationConfig: {
+                responseMimeType: "application/json",
+                maxOutputTokens: 8192,
+                temperature: 0,
+              },
+            }),
+          },
+        );
+      } else {
+        res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Lovable-API-Key": lovableKey!,
+            "X-Lovable-AIG-SDK": "vercel-ai-sdk",
+          },
+          body: JSON.stringify({
+            model: "google/gemini-3-flash-preview",
+            messages: [
+              { role: "system", content: SYSTEM_PROMPT },
+              { role: "user", content: userPrompt },
+            ],
+            response_format: { type: "json_object" },
+            max_tokens: 8192,
+          }),
+        });
+      }
       if ((res.status !== 429 && res.status < 500) || attempt === MAX_ATTEMPTS) break;
       const retryAfter = Number(res.headers.get("retry-after")) || 0;
       const wait = retryAfter > 0
@@ -192,7 +213,6 @@ export const extractInvoiceWithAI = createServerFn({ method: "POST" })
         : Math.min(60000, 2000 * 2 ** (attempt - 1)) + Math.random() * 750;
       await sleep(wait);
     }
-
 
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
@@ -213,15 +233,22 @@ export const extractInvoiceWithAI = createServerFn({ method: "POST" })
       return {
         ok: false,
         code: "AI_GATEWAY_ERROR",
-        message: `AI Gateway error ${res.status}: ${errText.slice(0, 300)}`,
+        message: `AI error ${res.status}: ${errText.slice(0, 300)}`,
       } satisfies ExtractInvoiceResult;
     }
 
-
-    const json = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const raw = json.choices?.[0]?.message?.content ?? "";
+    let raw = "";
+    if (useGemini) {
+      const json = (await res.json()) as {
+        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      };
+      raw = json.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+    } else {
+      const json = (await res.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      raw = json.choices?.[0]?.message?.content ?? "";
+    }
     if (!raw) {
       return {
         ok: false,
@@ -229,6 +256,7 @@ export const extractInvoiceWithAI = createServerFn({ method: "POST" })
         message: "AI returned an empty response",
       } satisfies ExtractInvoiceResult;
     }
+
 
     let parsed: unknown;
     try {
