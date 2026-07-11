@@ -24,15 +24,29 @@ import {
   Sparkles,
   ShieldCheck,
   FileSpreadsheet,
+  ChevronDown,
+  FileJson,
+  FileType2,
+  LayoutDashboard,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { InvoiceRecord } from "@/lib/gstr1/parser";
 import { parseInvoiceAI } from "@/lib/gstr1/ai-parser";
+import { importInvoicesFromExcel } from "@/lib/gstr1/excel-importer";
 import { exportGstr1Workbook } from "@/lib/gstr1/exporter";
 import { exportGstr1Json } from "@/lib/gstr1/json-exporter";
 import { exportHsnWorkbook } from "@/lib/gstr1/hsn-exporter";
 import { exportB2cWorkbook } from "@/lib/gstr1/b2c-exporter";
 import { exportDashboardWorkbook } from "@/lib/gstr1/dashboard-exporter";
 import { GstDashboard } from "@/components/GstDashboard";
+
 
 export const Route = createFileRoute("/")({
   head: () => ({
