@@ -1,10 +1,5 @@
 import { GSTIN_REGEX, stateFromGstin, STATE_CODES } from "./states";
 
-// Configure pdfjs worker (Vite ?url import)
-import * as pdfjsLib from "pdfjs-dist";
-import workerSrc from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-(pdfjsLib as unknown as { GlobalWorkerOptions: { workerSrc: string } }).GlobalWorkerOptions.workerSrc = workerSrc;
-
 export interface RateSplit {
   rate: number;
   taxableValue: number;
@@ -45,6 +40,12 @@ export interface InvoiceRecord {
 }
 
 export async function readPdfText(file: File): Promise<string> {
+  const [pdfjsLib, worker] = await Promise.all([
+    import("pdfjs-dist"),
+    import("pdfjs-dist/build/pdf.worker.min.mjs?url"),
+  ]);
+  (pdfjsLib as unknown as { GlobalWorkerOptions: { workerSrc: string } }).GlobalWorkerOptions.workerSrc = worker.default;
+
   const buf = await file.arrayBuffer();
   const pdf = await (pdfjsLib as any).getDocument({ data: buf }).promise;
   const Y_TOL = 3;
