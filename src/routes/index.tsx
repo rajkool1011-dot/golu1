@@ -442,6 +442,44 @@ function Index() {
                     </Button>
                   </div>
                 </div>
+                {(() => {
+                  const pdfCount = files.filter((f) => /\.pdf$/i.test(f.name)).length;
+                  const pendingPdfs = files.filter(
+                    (f, i) => /\.pdf$/i.test(f.name) && statuses[i] !== "completed",
+                  ).length;
+                  if (pdfCount === 0) return null;
+                  // Based on real gateway logs: avg ~0.017 cr/invoice, range 0.005–0.038
+                  const avg = 0.017;
+                  const lo = pendingPdfs * 0.005;
+                  const hi = pendingPdfs * 0.038;
+                  const est = pendingPdfs * avg;
+                  return (
+                    <div className="mt-3 rounded-md border border-dashed bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
+                      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                        <span>
+                          <span className="font-medium text-foreground">{pendingPdfs}</span> PDF
+                          {pendingPdfs === 1 ? "" : "s"} will call AI
+                          {pdfCount !== pendingPdfs && (
+                            <span className="ml-1">({pdfCount - pendingPdfs} already done)</span>
+                          )}
+                        </span>
+                        <span>
+                          Est. cost:{" "}
+                          <span className="font-medium tabular-nums text-foreground">
+                            ~{est.toFixed(2)} cr
+                          </span>{" "}
+                          <span className="opacity-70">
+                            ({lo.toFixed(2)}–{hi.toFixed(2)})
+                          </span>
+                        </span>
+                        <span>
+                          Capacity per 1 cr:{" "}
+                          <span className="font-medium tabular-nums text-foreground">~60 PDFs</span>
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
                 {processing && (
                   <div className="mt-3">
                     <Progress value={progress} aria-label={`Processing ${progress}%`} />
