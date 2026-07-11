@@ -88,6 +88,66 @@ function stripJson(text: string): string {
   return text.trim();
 }
 
+/** Best-effort repair of a truncated JSON object by closing open brackets. */
+function repairTruncatedJson(text: string): string {
+  let s = text.trim();
+  const first = s.indexOf("{");
+  if (first > 0) s = s.slice(first);
+  // Strip trailing partial token (unterminated string, dangling comma/colon).
+  // Find last position outside a string that safely terminates a value.
+  const stack: string[] = [];
+  let inStr = false;
+  let esc = false;
+  let lastSafe = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') { inStr = false; lastSafe = i + 1; }
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === "{" || c === "[") { stack.push(c); lastSafe = i + 1; continue; }
+    if (c === "}" || c === "]") { stack.pop(); lastSafe = i + 1; continue; }
+    if (c === "," || c === " " || c === "\n" || c === "\r" || c === "\t") {
+      if (c === ",") lastSafe = i; // trim before dangling comma
+      continue;
+    }
+    // digits/letters within a literal — advance safe pointer only when we know it ends
+    lastSafe = i + 1;
+  }
+  let out = s.slice(0, lastSafe);
+  // If we were inside a string, drop the partial one and any preceding "key":
+  if (inStr) {
+    const q = out.lastIndexOf('"');
+    if (q !== -1) out = out.slice(0, q);
+    out = out.replace(/,?\s*"[^"]*"\s*:\s*$/, "").replace(/,\s*$/, "");
+  }
+  out = out.replace(/[,:]\s*$/, "");
+  // Recompute open brackets and append closers.
+  const stk: string[] = [];
+  let inS = false, es = false;
+  for (let i = 0; i < out.length; i++) {
+    const c = out[i];
+    if (inS) {
+      if (es) es = false;
+      else if (c === "\\") es = true;
+      else if (c === '"') inS = false;
+      continue;
+    }
+    if (c === '"') inS = true;
+    else if (c === "{" || c === "[") stk.push(c);
+    else if (c === "}" || c === "]") stk.pop();
+  }
+  while (stk.length) {
+    const open = stk.pop();
+    out += open === "{" ? "}" : "]";
+  }
+  return out;
+}
+
+
 export const extractInvoiceWithAI = createServerFn({ method: "POST" })
   .inputValidator((v: unknown) => Input.parse(v))
   .handler(async ({ data }) => {
@@ -109,6 +169,7 @@ export const extractInvoiceWithAI = createServerFn({ method: "POST" })
         },
       ],
       response_format: { type: "json_object" },
+      max_tokens: 8192,
     };
 
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -150,7 +211,12 @@ export const extractInvoiceWithAI = createServerFn({ method: "POST" })
     try {
       parsed = JSON.parse(stripJson(raw));
     } catch {
-      throw new Error(`AI returned non-JSON output: ${raw.slice(0, 200)}`);
+      // Response was likely truncated mid-JSON — attempt to repair and reparse.
+      try {
+        parsed = JSON.parse(repairTruncatedJson(stripJson(raw)));
+      } catch {
+        throw new Error(`AI returned non-JSON output: ${raw.slice(0, 200)}`);
+      }
     }
     return InvoiceSchema.parse(parsed);
   });
