@@ -24,15 +24,29 @@ import {
   Sparkles,
   ShieldCheck,
   FileSpreadsheet,
+  ChevronDown,
+  FileJson,
+  FileType2,
+  LayoutDashboard,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { InvoiceRecord } from "@/lib/gstr1/parser";
 import { parseInvoiceAI } from "@/lib/gstr1/ai-parser";
+import { importInvoicesFromExcel } from "@/lib/gstr1/excel-importer";
 import { exportGstr1Workbook } from "@/lib/gstr1/exporter";
 import { exportGstr1Json } from "@/lib/gstr1/json-exporter";
 import { exportHsnWorkbook } from "@/lib/gstr1/hsn-exporter";
 import { exportB2cWorkbook } from "@/lib/gstr1/b2c-exporter";
 import { exportDashboardWorkbook } from "@/lib/gstr1/dashboard-exporter";
 import { GstDashboard } from "@/components/GstDashboard";
+
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -60,16 +74,19 @@ function Index() {
   const [progress, setProgress] = useState(0);
   const [dragOver, setDragOver] = useState(false);
 
+  const isSupported = (name: string) =>
+    /\.(pdf|xlsx|xls|csv)$/i.test(name);
+
   const onFiles = useCallback((incoming: FileList | File[]) => {
-    const pdfs = Array.from(incoming).filter((f) => f.name.toLowerCase().endsWith(".pdf"));
-    if (!pdfs.length) {
-      toast.error("Please add PDF files");
+    const accepted = Array.from(incoming).filter((f) => isSupported(f.name));
+    if (!accepted.length) {
+      toast.error("Please add PDF or Excel/CSV files");
       return;
     }
     setFiles((prev) => {
       const seen = new Set(prev.map((f) => f.name + f.size));
       const merged = [...prev];
-      for (const f of pdfs) if (!seen.has(f.name + f.size)) merged.push(f);
+      for (const f of accepted) if (!seen.has(f.name + f.size)) merged.push(f);
       return merged;
     });
   }, []);
@@ -80,12 +97,19 @@ function Index() {
     setProgress(0);
     const out: InvoiceRecord[] = [];
     for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const isExcel = /\.(xlsx|xls|csv)$/i.test(f.name);
       try {
-        const rec = await parseInvoiceAI(files[i]);
-        out.push(rec);
+        if (isExcel) {
+          const recs = await importInvoicesFromExcel(f);
+          if (!recs.length) throw new Error("No invoice rows detected in sheet");
+          out.push(...recs);
+        } else {
+          out.push(await parseInvoiceAI(f));
+        }
       } catch (e) {
         out.push({
-          fileName: files[i].name,
+          fileName: f.name,
           invoiceNumber: null,
           invoiceDate: null,
           customerGstin: null,
@@ -103,8 +127,9 @@ function Index() {
         });
       }
       setProgress(Math.round(((i + 1) / files.length) * 100));
-      if (i < files.length - 1) await new Promise((r) => setTimeout(r, 2500));
+      if (!isExcel && i < files.length - 1) await new Promise((r) => setTimeout(r, 2500));
     }
+
     const numCounts = new Map<string, number>();
     for (const r of out) if (r.invoiceNumber) numCounts.set(r.invoiceNumber, (numCounts.get(r.invoiceNumber) ?? 0) + 1);
     for (const r of out)
@@ -208,32 +233,32 @@ function Index() {
                 <Upload className="h-7 w-7" aria-hidden="true" />
               </div>
               <p className="mt-4 text-sm font-medium text-foreground">
-                Drag &amp; drop PDF invoices here
+                Drag &amp; drop invoices here
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                or select individual files, or an entire folder
+                PDF, XLSX, XLS or CSV — individual files or an entire folder
               </p>
               <div className="mt-5 flex flex-wrap justify-center gap-2">
                 <label>
                   <input
                     type="file"
                     multiple
-                    accept="application/pdf"
+                    accept=".pdf,.xlsx,.xls,.csv,application/pdf"
                     className="sr-only"
-                    aria-label="Select PDF files"
+                    aria-label="Select invoice files"
                     onChange={(e) => e.target.files && onFiles(e.target.files)}
                   />
                   <Button asChild variant="default" className="min-h-11">
-                    <span>Select PDFs</span>
+                    <span>Select Files</span>
                   </Button>
                 </label>
                 <label>
                   <input
                     type="file"
                     multiple
-                    accept="application/pdf"
+                    accept=".pdf,.xlsx,.xls,.csv,application/pdf"
                     className="sr-only"
-                    aria-label="Select a folder of PDFs"
+                    aria-label="Select a folder of invoices"
                     // @ts-expect-error webkitdirectory not in types
                     webkitdirectory=""
                     directory=""
@@ -244,6 +269,7 @@ function Index() {
                   </Button>
                 </label>
               </div>
+
             </Card>
 
             {/* File queue */}
@@ -255,8 +281,9 @@ function Index() {
                       {files.length} file{files.length === 1 ? "" : "s"} queued
                     </div>
                     <div className="truncate text-xs text-muted-foreground">
-                      Ready to process • text-based PDFs supported
+                      Ready to process • PDF, XLSX, XLS or CSV
                     </div>
+
                   </div>
                   <div className="flex shrink-0 gap-2">
                     <Button
@@ -301,41 +328,70 @@ function Index() {
             {records.length > 0 && (
               <>
                 <Card className="p-4 sm:p-5">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <h2 className="font-display text-base font-semibold tracking-tight">Exports</h2>
-                    <Badge variant="secondary" className="tabular-nums">
-                      {records.length} invoice{records.length === 1 ? "" : "s"}
-                    </Badge>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm" onClick={() => {
-                      const gstin = window.prompt("Your (supplier) GSTIN — 15 chars:")?.trim().toUpperCase() ?? "";
-                      if (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9]$/.test(gstin)) {
-                        toast.error("Invalid supplier GSTIN");
-                        return;
-                      }
-                      const fp = window.prompt("Filing period MMYYYY (blank = use invoice date):", "")?.trim() || undefined;
-                      exportGstr1Json(records, { supplierGstin: gstin, filingPeriod: fp });
-                    }}>
-                      <Download className="h-4 w-4" aria-hidden="true" /> GSTR-1 JSON
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => exportHsnWorkbook(records, { category: "B2B" })}>
-                      <Download className="h-4 w-4" aria-hidden="true" /> HSN B2B
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => exportHsnWorkbook(records, { category: "B2C" })}>
-                      <Download className="h-4 w-4" aria-hidden="true" /> HSN B2C
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => exportB2cWorkbook(records)}>
-                      <Download className="h-4 w-4" aria-hidden="true" /> B2C CSV
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => exportDashboardWorkbook(records)}>
-                      <Download className="h-4 w-4" aria-hidden="true" /> Dashboard XLSX
-                    </Button>
-                    <Button size="sm" onClick={() => exportGstr1Workbook(records)}>
-                      <Download className="h-4 w-4" aria-hidden="true" /> GSTR-1 CSV
-                    </Button>
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                    <div className="min-w-0">
+                      <h2 className="font-display text-base font-semibold tracking-tight">Exports</h2>
+                      <p className="truncate text-xs text-muted-foreground">
+                        Ready-to-file JSON, CSV, HSN and dashboard bundles
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Badge variant="secondary" className="hidden tabular-nums sm:inline-flex">
+                        {records.length} invoice{records.length === 1 ? "" : "s"}
+                      </Badge>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm" className="min-h-11">
+                            <Download className="h-4 w-4" aria-hidden="true" />
+                            <span>Export</span>
+                            <ChevronDown className="h-4 w-4 opacity-70" aria-hidden="true" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-64">
+                          <DropdownMenuLabel>GSTR-1 Return</DropdownMenuLabel>
+                          <DropdownMenuItem onClick={() => {
+                            const gstin = window.prompt("Your (supplier) GSTIN — 15 chars:")?.trim().toUpperCase() ?? "";
+                            if (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9]$/.test(gstin)) {
+                              toast.error("Invalid supplier GSTIN");
+                              return;
+                            }
+                            const fp = window.prompt("Filing period MMYYYY (blank = use invoice date):", "")?.trim() || undefined;
+                            exportGstr1Json(records, { supplierGstin: gstin, filingPeriod: fp });
+                          }}>
+                            <FileJson className="h-4 w-4" aria-hidden="true" />
+                            <span>GSTR-1 JSON</span>
+                            <span className="ml-auto text-[10px] text-muted-foreground">Offline utility</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => exportGstr1Workbook(records)}>
+                            <FileSpreadsheet className="h-4 w-4" aria-hidden="true" />
+                            <span>GSTR-1 CSV (B2B)</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuLabel>HSN Summary</DropdownMenuLabel>
+                          <DropdownMenuItem onClick={() => exportHsnWorkbook(records, { category: "B2B" })}>
+                            <FileType2 className="h-4 w-4" aria-hidden="true" />
+                            <span>HSN B2B CSV</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => exportHsnWorkbook(records, { category: "B2C" })}>
+                            <FileType2 className="h-4 w-4" aria-hidden="true" />
+                            <span>HSN B2C CSV</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuLabel>B2C & Dashboard</DropdownMenuLabel>
+                          <DropdownMenuItem onClick={() => exportB2cWorkbook(records)}>
+                            <FileSpreadsheet className="h-4 w-4" aria-hidden="true" />
+                            <span>B2C CSV</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => exportDashboardWorkbook(records)}>
+                            <LayoutDashboard className="h-4 w-4" aria-hidden="true" />
+                            <span>GST Dashboard XLSX</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
                 </Card>
+
 
                 <Card className="overflow-hidden">
                   <div className="border-b border-border px-4 py-3 sm:px-5">
