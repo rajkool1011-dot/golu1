@@ -281,8 +281,9 @@ function Index() {
                       {files.length} file{files.length === 1 ? "" : "s"} queued
                     </div>
                     <div className="truncate text-xs text-muted-foreground">
-                      Ready to process • text-based PDFs supported
+                      Ready to process • PDF, XLSX, XLS or CSV
                     </div>
+
                   </div>
                   <div className="flex shrink-0 gap-2">
                     <Button
