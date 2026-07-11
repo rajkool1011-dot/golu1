@@ -230,7 +230,7 @@ function Index() {
 
     if (halted) {
       setCreditsExhausted(true);
-      toast.error("AI credits exhausted — extraction stopped");
+      toast.error("AI extraction paused — please retry in a moment");
       setProcessing(false);
       return;
     }
