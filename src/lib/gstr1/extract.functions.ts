@@ -73,6 +73,10 @@ const InvoiceSchema = z.object({
 
 export type ExtractedInvoice = z.infer<typeof InvoiceSchema>;
 
+export type ExtractInvoiceResult =
+  | { ok: true; invoice: ExtractedInvoice }
+  | { ok: false; code: "AI_CREDITS_EXHAUSTED" | "AI_RATE_LIMIT" | "AI_GATEWAY_ERROR" | "AI_EMPTY_RESPONSE" | "AI_INVALID_JSON"; message: string };
+
 const Input = z.object({
   fileName: z.string(),
   mimeType: z.string(),
@@ -195,9 +199,25 @@ export const extractInvoiceWithAI = createServerFn({ method: "POST" })
 
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
-      if (res.status === 429) throw new Error("AI rate limit reached — please retry in a moment.");
-      if (res.status === 402) throw new Error("AI credits exhausted — add credits in workspace billing.");
-      throw new Error(`AI Gateway error ${res.status}: ${errText.slice(0, 300)}`);
+      if (res.status === 402) {
+        return {
+          ok: false,
+          code: "AI_CREDITS_EXHAUSTED",
+          message: "AI credits exhausted — add credits in workspace billing.",
+        } satisfies ExtractInvoiceResult;
+      }
+      if (res.status === 429) {
+        return {
+          ok: false,
+          code: "AI_RATE_LIMIT",
+          message: "AI rate limit reached — please retry in a moment.",
+        } satisfies ExtractInvoiceResult;
+      }
+      return {
+        ok: false,
+        code: "AI_GATEWAY_ERROR",
+        message: `AI Gateway error ${res.status}: ${errText.slice(0, 300)}`,
+      } satisfies ExtractInvoiceResult;
     }
 
 
@@ -205,7 +225,13 @@ export const extractInvoiceWithAI = createServerFn({ method: "POST" })
       choices?: Array<{ message?: { content?: string } }>;
     };
     const raw = json.choices?.[0]?.message?.content ?? "";
-    if (!raw) throw new Error("AI returned an empty response");
+    if (!raw) {
+      return {
+        ok: false,
+        code: "AI_EMPTY_RESPONSE",
+        message: "AI returned an empty response",
+      } satisfies ExtractInvoiceResult;
+    }
 
     let parsed: unknown;
     try {
@@ -215,8 +241,15 @@ export const extractInvoiceWithAI = createServerFn({ method: "POST" })
       try {
         parsed = JSON.parse(repairTruncatedJson(stripJson(raw)));
       } catch {
-        throw new Error(`AI returned non-JSON output: ${raw.slice(0, 200)}`);
+        return {
+          ok: false,
+          code: "AI_INVALID_JSON",
+          message: `AI returned non-JSON output: ${raw.slice(0, 200)}`,
+        } satisfies ExtractInvoiceResult;
       }
     }
-    return InvoiceSchema.parse(parsed);
+    return {
+      ok: true,
+      invoice: InvoiceSchema.parse(parsed),
+    } satisfies ExtractInvoiceResult;
   });
