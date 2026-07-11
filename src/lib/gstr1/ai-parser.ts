@@ -1,5 +1,5 @@
 import { extractInvoiceWithAI } from "./extract.functions";
-import { readPdfText, type InvoiceRecord, type RateSplit } from "./parser";
+import { parseInvoicePdf, readPdfText, type InvoiceRecord, type RateSplit } from "./parser";
 import { stateFromGstin, normalizePlaceOfSupply, STATE_CODES } from "./states";
 
 function isValidGstinLite(g: string) {
@@ -20,6 +20,11 @@ export async function parseInvoiceAI(file: File): Promise<InvoiceRecord> {
   });
 
   if (!ai.ok) {
+    if (ai.code === "AI_CREDITS_EXHAUSTED") {
+      const fallback = await parseInvoicePdf(file);
+      fallback.issues.unshift("AI unavailable: extracted with local parser");
+      return fallback;
+    }
     throw Object.assign(new Error(ai.message), { code: ai.code });
   }
 
