@@ -178,7 +178,7 @@ function Index() {
     };
 
     // Worker pool: process files with limited concurrency so 100+ PDFs run smoothly
-    const CONCURRENCY = 4;
+    const CONCURRENCY = 1;
     let cursor = 0;
     const runNext = async (): Promise<void> => {
       while (cursor < pending.length) {

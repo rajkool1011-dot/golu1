@@ -44,7 +44,7 @@ export interface InvoiceRecord {
   rawText: string;
 }
 
-async function readPdfText(file: File): Promise<string> {
+export async function readPdfText(file: File): Promise<string> {
   const buf = await file.arrayBuffer();
   const pdf = await (pdfjsLib as any).getDocument({ data: buf }).promise;
   const Y_TOL = 3;
