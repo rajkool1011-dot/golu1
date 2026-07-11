@@ -93,15 +93,23 @@ export function buildGstr1Json(records: InvoiceRecord[], opts: JsonExportOptions
           return { num, itm_det };
         });
 
+      const totIgst = round2(r.rateSplits.reduce((a, s) => a + (Number(s.igst) || 0), 0));
+      const totCgst = round2(r.rateSplits.reduce((a, s) => a + (Number(s.cgst) || 0), 0));
+      const totSgst = round2(r.rateSplits.reduce((a, s) => a + (Number(s.sgst) || 0), 0));
+
       return {
         inum: r.invoiceNumber ?? "",
         idt: normalizeDate(r.invoiceDate) ?? r.invoiceDate ?? "",
         val: round2(Number(r.invoiceValue ?? 0)),
+        iamt: totIgst,
+        camt: totCgst,
+        samt: totSgst,
         pos: posCode(r.placeOfSupply, r.customerGstin) ?? "",
         rchrg: "N",
         inv_typ: "R",
         itms,
       };
+
     }),
   }));
 
