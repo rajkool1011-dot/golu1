@@ -350,7 +350,7 @@ function extractRateSplits(text: string): RateSplit[] {
       else b.sgst += tax;
     }
   };
-  if (!populatedByPct.size) {
+  if (!bucket.size) {
     runNoPct(withoutPct("IGST"), "i");
     runNoPct(withoutPct("CGST"), "c");
     runNoPct(withoutPct("SGST|UTGST"), "s");
