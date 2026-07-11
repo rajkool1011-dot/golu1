@@ -96,39 +96,69 @@ function Index() {
     setProcessing(true);
     setProgress(0);
     const out: InvoiceRecord[] = [];
-    for (let i = 0; i < files.length; i++) {
-      const f = files[i];
-      const isExcel = /\.(xlsx|xls|csv)$/i.test(f.name);
-      try {
-        if (isExcel) {
-          const recs = await importInvoicesFromExcel(f);
-          if (!recs.length) throw new Error("No invoice rows detected in sheet");
-          out.push(...recs);
-        } else {
-          out.push(await parseInvoiceAI(f));
+    let done = 0;
+
+    const failed = (f: File, msg: string): InvoiceRecord => ({
+      fileName: f.name,
+      invoiceNumber: null,
+      invoiceDate: null,
+      customerGstin: null,
+      customerName: null,
+      placeOfSupply: null,
+      invoiceValue: null,
+      supplierGstin: null,
+      supplierState: null,
+      rateSplits: [],
+      hsnItems: [],
+      category: "B2C",
+      supplyType: "Unknown",
+      issues: [`Failed to parse: ${msg}`],
+      rawText: "",
+    });
+
+    const parsePdfWithRetry = async (f: File): Promise<InvoiceRecord> => {
+      let lastErr: unknown;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+          return await parseInvoiceAI(f);
+        } catch (e) {
+          lastErr = e;
+          const msg = (e as Error).message || "";
+          const rateLimited = /429|rate|limit|quota/i.test(msg);
+          if (!rateLimited) break;
+          // backoff: 2s, 5s, 10s, 20s
+          await new Promise((r) => setTimeout(r, [2000, 5000, 10000, 20000][attempt]));
         }
-      } catch (e) {
-        out.push({
-          fileName: f.name,
-          invoiceNumber: null,
-          invoiceDate: null,
-          customerGstin: null,
-          customerName: null,
-          placeOfSupply: null,
-          invoiceValue: null,
-          supplierGstin: null,
-          supplierState: null,
-          rateSplits: [],
-          hsnItems: [],
-          category: "B2C",
-          supplyType: "Unknown",
-          issues: [`Failed to parse: ${(e as Error).message}`],
-          rawText: "",
-        });
       }
-      setProgress(Math.round(((i + 1) / files.length) * 100));
-      if (!isExcel && i < files.length - 1) await new Promise((r) => setTimeout(r, 2500));
-    }
+      return failed(f, (lastErr as Error)?.message ?? "unknown error");
+    };
+
+    // Worker pool: process files with limited concurrency so 100+ PDFs run smoothly
+    const CONCURRENCY = 4;
+    let cursor = 0;
+    const runNext = async (): Promise<void> => {
+      while (cursor < files.length) {
+        const i = cursor++;
+        const f = files[i];
+        const isExcel = /\.(xlsx|xls|csv)$/i.test(f.name);
+        try {
+          if (isExcel) {
+            const recs = await importInvoicesFromExcel(f);
+            if (!recs.length) throw new Error("No invoice rows detected in sheet");
+            out.push(...recs);
+          } else {
+            out.push(await parsePdfWithRetry(f));
+          }
+        } catch (e) {
+          out.push(failed(f, (e as Error).message));
+        }
+        done++;
+        setProgress(Math.round((done / files.length) * 100));
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(CONCURRENCY, files.length) }, runNext),
+    );
 
     const numCounts = new Map<string, number>();
     for (const r of out) if (r.invoiceNumber) numCounts.set(r.invoiceNumber, (numCounts.get(r.invoiceNumber) ?? 0) + 1);
