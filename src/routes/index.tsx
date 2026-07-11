@@ -141,32 +141,46 @@ function Index() {
         const i = cursor++;
         const f = files[i];
         const isExcel = /\.(xlsx|xls|csv)$/i.test(f.name);
+        const newRecs: InvoiceRecord[] = [];
         try {
           if (isExcel) {
             const recs = await importInvoicesFromExcel(f);
             if (!recs.length) throw new Error("No invoice rows detected in sheet");
-            out.push(...recs);
+            newRecs.push(...recs);
           } else {
-            out.push(await parsePdfWithRetry(f));
+            newRecs.push(await parsePdfWithRetry(f));
           }
         } catch (e) {
-          out.push(failed(f, (e as Error).message));
+          newRecs.push(failed(f, (e as Error).message));
         }
+        out.push(...newRecs);
         done++;
         setProgress(Math.round((done / files.length) * 100));
+        // Live update: push each processed invoice into the table immediately
+        setRecords((prev) => [...prev, ...newRecs]);
+        for (const r of newRecs) {
+          if (r.issues.some((s) => s.startsWith("Failed to parse"))) {
+            toast.error(`${f.name}: extraction failed`);
+          } else {
+            toast.success(`Extracted ${r.invoiceNumber ?? f.name}`);
+          }
+        }
       }
     };
+    // Reset the live-updating table before this run
+    setRecords([]);
     await Promise.all(
       Array.from({ length: Math.min(CONCURRENCY, files.length) }, runNext),
     );
 
+    // Duplicate-invoice-number annotation across the whole batch
     const numCounts = new Map<string, number>();
     for (const r of out) if (r.invoiceNumber) numCounts.set(r.invoiceNumber, (numCounts.get(r.invoiceNumber) ?? 0) + 1);
     for (const r of out)
-      if (r.invoiceNumber && (numCounts.get(r.invoiceNumber) ?? 0) > 1)
+      if (r.invoiceNumber && (numCounts.get(r.invoiceNumber) ?? 0) > 1 && !r.issues.includes("Duplicate invoice number"))
         r.issues.push("Duplicate invoice number");
 
-    setRecords(out);
+    setRecords([...out]);
     setProcessing(false);
     toast.success(`Processed ${out.length} invoice${out.length === 1 ? "" : "s"}`);
   };
