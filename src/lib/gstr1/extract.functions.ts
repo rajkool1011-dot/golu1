@@ -79,8 +79,7 @@ export type ExtractInvoiceResult =
 
 const Input = z.object({
   fileName: z.string(),
-  mimeType: z.string(),
-  base64: z.string(),
+  text: z.string(),
 });
 
 function stripJson(text: string): string {
@@ -158,7 +157,7 @@ export const extractInvoiceWithAI = createServerFn({ method: "POST" })
     const apiKey = process.env.LOVABLE_API_KEY;
     if (!apiKey) throw new Error("Missing LOVABLE_API_KEY");
 
-    const dataUrl = `data:${data.mimeType};base64,${data.base64}`;
+    const invoiceText = data.text.trim().slice(0, 45000);
 
     const body = {
       model: "google/gemini-3-flash-preview",
@@ -166,10 +165,7 @@ export const extractInvoiceWithAI = createServerFn({ method: "POST" })
         { role: "system", content: SYSTEM_PROMPT },
         {
           role: "user",
-          content: [
-            { type: "text", text: `Extract invoice fields from this PDF (file: ${data.fileName}). Return JSON only.` },
-            { type: "file", file: { filename: data.fileName, file_data: dataUrl } },
-          ],
+          content: `Extract invoice fields from this invoice text (file: ${data.fileName}). Return JSON only.\n\n${invoiceText}`,
         },
       ],
       response_format: { type: "json_object" },
@@ -185,6 +181,7 @@ export const extractInvoiceWithAI = createServerFn({ method: "POST" })
         headers: {
           "Content-Type": "application/json",
           "Lovable-API-Key": apiKey,
+          "X-Lovable-AIG-SDK": "vercel-ai-sdk",
         },
         body: JSON.stringify(body),
       });

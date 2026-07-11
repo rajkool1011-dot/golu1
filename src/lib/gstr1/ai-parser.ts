@@ -1,34 +1,30 @@
 import { extractInvoiceWithAI } from "./extract.functions";
-import type { InvoiceRecord, RateSplit } from "./parser";
+import { parseInvoicePdf, readPdfText, type InvoiceRecord, type RateSplit } from "./parser";
 import { stateFromGstin, normalizePlaceOfSupply, STATE_CODES } from "./states";
-
-async function fileToBase64(file: File): Promise<string> {
-  const buf = await file.arrayBuffer();
-  const bytes = new Uint8Array(buf);
-  // Chunked to avoid call-stack overflow on large PDFs.
-  let binary = "";
-  const CHUNK = 0x8000;
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-  }
-  return btoa(binary);
-}
 
 function isValidGstinLite(g: string) {
   return /^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]$/.test(g);
 }
 
 export async function parseInvoiceAI(file: File): Promise<InvoiceRecord> {
-  const base64 = await fileToBase64(file);
+  const text = (await readPdfText(file)).slice(0, 45000);
+  if (!text.trim()) {
+    throw new Error("No readable PDF text found. Please upload a text-based invoice PDF.");
+  }
+
   const ai = await extractInvoiceWithAI({
     data: {
       fileName: file.name,
-      mimeType: file.type || "application/pdf",
-      base64,
+      text,
     },
   });
 
   if (!ai.ok) {
+    if (ai.code === "AI_CREDITS_EXHAUSTED") {
+      const fallback = await parseInvoicePdf(file);
+      fallback.issues.unshift("AI unavailable: extracted with local parser");
+      return fallback;
+    }
     throw Object.assign(new Error(ai.message), { code: ai.code });
   }
 
@@ -89,7 +85,7 @@ export async function parseInvoiceAI(file: File): Promise<InvoiceRecord> {
     category,
     supplyType,
     issues: [],
-    rawText: "",
+    rawText: text,
   };
 
   // Validation
