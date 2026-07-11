@@ -327,41 +327,70 @@ function Index() {
             {records.length > 0 && (
               <>
                 <Card className="p-4 sm:p-5">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <h2 className="font-display text-base font-semibold tracking-tight">Exports</h2>
-                    <Badge variant="secondary" className="tabular-nums">
-                      {records.length} invoice{records.length === 1 ? "" : "s"}
-                    </Badge>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm" onClick={() => {
-                      const gstin = window.prompt("Your (supplier) GSTIN — 15 chars:")?.trim().toUpperCase() ?? "";
-                      if (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9]$/.test(gstin)) {
-                        toast.error("Invalid supplier GSTIN");
-                        return;
-                      }
-                      const fp = window.prompt("Filing period MMYYYY (blank = use invoice date):", "")?.trim() || undefined;
-                      exportGstr1Json(records, { supplierGstin: gstin, filingPeriod: fp });
-                    }}>
-                      <Download className="h-4 w-4" aria-hidden="true" /> GSTR-1 JSON
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => exportHsnWorkbook(records, { category: "B2B" })}>
-                      <Download className="h-4 w-4" aria-hidden="true" /> HSN B2B
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => exportHsnWorkbook(records, { category: "B2C" })}>
-                      <Download className="h-4 w-4" aria-hidden="true" /> HSN B2C
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => exportB2cWorkbook(records)}>
-                      <Download className="h-4 w-4" aria-hidden="true" /> B2C CSV
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => exportDashboardWorkbook(records)}>
-                      <Download className="h-4 w-4" aria-hidden="true" /> Dashboard XLSX
-                    </Button>
-                    <Button size="sm" onClick={() => exportGstr1Workbook(records)}>
-                      <Download className="h-4 w-4" aria-hidden="true" /> GSTR-1 CSV
-                    </Button>
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                    <div className="min-w-0">
+                      <h2 className="font-display text-base font-semibold tracking-tight">Exports</h2>
+                      <p className="truncate text-xs text-muted-foreground">
+                        Ready-to-file JSON, CSV, HSN and dashboard bundles
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Badge variant="secondary" className="hidden tabular-nums sm:inline-flex">
+                        {records.length} invoice{records.length === 1 ? "" : "s"}
+                      </Badge>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm" className="min-h-11">
+                            <Download className="h-4 w-4" aria-hidden="true" />
+                            <span>Export</span>
+                            <ChevronDown className="h-4 w-4 opacity-70" aria-hidden="true" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-64">
+                          <DropdownMenuLabel>GSTR-1 Return</DropdownMenuLabel>
+                          <DropdownMenuItem onClick={() => {
+                            const gstin = window.prompt("Your (supplier) GSTIN — 15 chars:")?.trim().toUpperCase() ?? "";
+                            if (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9]$/.test(gstin)) {
+                              toast.error("Invalid supplier GSTIN");
+                              return;
+                            }
+                            const fp = window.prompt("Filing period MMYYYY (blank = use invoice date):", "")?.trim() || undefined;
+                            exportGstr1Json(records, { supplierGstin: gstin, filingPeriod: fp });
+                          }}>
+                            <FileJson className="h-4 w-4" aria-hidden="true" />
+                            <span>GSTR-1 JSON</span>
+                            <span className="ml-auto text-[10px] text-muted-foreground">Offline utility</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => exportGstr1Workbook(records)}>
+                            <FileSpreadsheet className="h-4 w-4" aria-hidden="true" />
+                            <span>GSTR-1 CSV (B2B)</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuLabel>HSN Summary</DropdownMenuLabel>
+                          <DropdownMenuItem onClick={() => exportHsnWorkbook(records, { category: "B2B" })}>
+                            <FileType2 className="h-4 w-4" aria-hidden="true" />
+                            <span>HSN B2B CSV</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => exportHsnWorkbook(records, { category: "B2C" })}>
+                            <FileType2 className="h-4 w-4" aria-hidden="true" />
+                            <span>HSN B2C CSV</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuLabel>B2C & Dashboard</DropdownMenuLabel>
+                          <DropdownMenuItem onClick={() => exportB2cWorkbook(records)}>
+                            <FileSpreadsheet className="h-4 w-4" aria-hidden="true" />
+                            <span>B2C CSV</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => exportDashboardWorkbook(records)}>
+                            <LayoutDashboard className="h-4 w-4" aria-hidden="true" />
+                            <span>GST Dashboard XLSX</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
                 </Card>
+
 
                 <Card className="overflow-hidden">
                   <div className="border-b border-border px-4 py-3 sm:px-5">
