@@ -109,6 +109,7 @@ export const extractInvoiceWithAI = createServerFn({ method: "POST" })
         },
       ],
       response_format: { type: "json_object" },
+      max_tokens: 8192,
     };
 
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
