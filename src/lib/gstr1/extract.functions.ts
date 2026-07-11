@@ -151,7 +151,12 @@ export const extractInvoiceWithAI = createServerFn({ method: "POST" })
     try {
       parsed = JSON.parse(stripJson(raw));
     } catch {
-      throw new Error(`AI returned non-JSON output: ${raw.slice(0, 200)}`);
+      // Response was likely truncated mid-JSON — attempt to repair and reparse.
+      try {
+        parsed = JSON.parse(repairTruncatedJson(stripJson(raw)));
+      } catch {
+        throw new Error(`AI returned non-JSON output: ${raw.slice(0, 200)}`);
+      }
     }
     return InvoiceSchema.parse(parsed);
   });
