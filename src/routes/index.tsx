@@ -429,9 +429,9 @@ function Index() {
                       AI credits exhausted
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Further PDF extraction is paused. Add credits in workspace
-                      billing, then click <span className="font-medium">Resume</span> to continue
-                      with the remaining queued files.
+                      Extraction paused. Add credits in workspace billing — the
+                      queue will resume automatically when the tab regains focus,
+                      or in <span className="font-medium tabular-nums text-foreground">{retryIn}s</span> on the next auto-retry.
                     </p>
                   </div>
                   <Button
@@ -440,7 +440,7 @@ function Index() {
                     onClick={() => { setCreditsExhausted(false); void process(); }}
                     className="shrink-0"
                   >
-                    Resume
+                    Resume now
                   </Button>
                 </div>
               </Card>
