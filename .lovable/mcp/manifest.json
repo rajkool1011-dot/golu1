@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "sdk_version": "0.20.1",
+  "path": "/mcp",
+  "auth": {
+    "type": "none"
+  },
+  "mcp": {
+    "server": {
+      "name": "gstdesk-mcp",
+      "version": "0.1.0",
+      "title": "GSTDesk MCP"
+    },
+    "tools": [
+      {
+        "name": "extract_gst_invoice",
+        "title": "Extract GST invoice",
+        "description": "Extract structured Indian GST invoice fields (invoice no, date, customer, GSTIN, place of supply, invoice value, per-rate rows, and per-line HSN/SAC items) from raw invoice text. Input the plain text of the invoice (e.g. copied from a PDF).",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "invoice_text": {
+              "type": "string",
+              "minLength": 20,
+              "description": "Raw invoice text to extract. Should include tax lines and totals."
+            },
+            "file_name": {
+              "description": "Optional file name for context only.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "invoice_text"
+          ]
+        },
+        "outputSchema": null
+      }
+    ]
+  }
+}
