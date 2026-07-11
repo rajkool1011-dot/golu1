@@ -263,12 +263,26 @@ function Index() {
                     <TableHead>Cat.</TableHead>
                     <TableHead>Supply</TableHead>
                     <TableHead className="text-right">Value</TableHead>
+                    <TableHead className="text-right">Taxable</TableHead>
+                    <TableHead className="text-right">IGST</TableHead>
+                    <TableHead className="text-right">CGST</TableHead>
+                    <TableHead className="text-right">SGST</TableHead>
                     <TableHead>Rates</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {records.map((r, i) => (
+                  {records.map((r, i) => {
+                    const t = r.rateSplits.reduce(
+                      (a, s) => ({
+                        taxable: a.taxable + s.taxableValue,
+                        igst: a.igst + s.igst,
+                        cgst: a.cgst + s.cgst,
+                        sgst: a.sgst + s.sgst,
+                      }),
+                      { taxable: 0, igst: 0, cgst: 0, sgst: 0 },
+                    );
+                    return (
                     <TableRow key={i}>
                       <TableCell className="max-w-[180px] truncate text-xs" title={r.fileName}>
                         {r.fileName}
@@ -291,6 +305,10 @@ function Index() {
                       <TableCell className="text-right">
                         {r.invoiceValue != null ? fmt(r.invoiceValue) : "—"}
                       </TableCell>
+                      <TableCell className="text-right">{fmt(t.taxable)}</TableCell>
+                      <TableCell className="text-right">{t.igst > 0 ? fmt(t.igst) : "—"}</TableCell>
+                      <TableCell className="text-right">{t.cgst > 0 ? fmt(t.cgst) : "—"}</TableCell>
+                      <TableCell className="text-right">{t.sgst > 0 ? fmt(t.sgst) : "—"}</TableCell>
                       <TableCell className="text-xs">
                         {r.rateSplits.map((s) => `${s.rate}%`).join(", ") || "—"}
                       </TableCell>
@@ -309,7 +327,9 @@ function Index() {
                         )}
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
+
                 </TableBody>
               </Table>
             </Card>
