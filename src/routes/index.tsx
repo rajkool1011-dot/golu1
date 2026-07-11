@@ -67,12 +67,16 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
+type FileStatus = "queued" | "processing" | "retrying" | "completed" | "failed";
+
 function Index() {
   const [files, setFiles] = useState<File[]>([]);
+  const [statuses, setStatuses] = useState<FileStatus[]>([]);
   const [records, setRecords] = useState<InvoiceRecord[]>([]);
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [dragOver, setDragOver] = useState(false);
+  const [creditsExhausted, setCreditsExhausted] = useState(false);
 
   const isSupported = (name: string) =>
     /\.(pdf|xlsx|xls|csv)$/i.test(name);
@@ -86,10 +90,21 @@ function Index() {
     setFiles((prev) => {
       const seen = new Set(prev.map((f) => f.name + f.size));
       const merged = [...prev];
-      for (const f of accepted) if (!seen.has(f.name + f.size)) merged.push(f);
+      const addedStatuses: FileStatus[] = [];
+      for (const f of accepted) {
+        if (!seen.has(f.name + f.size)) {
+          merged.push(f);
+          addedStatuses.push("queued");
+        }
+      }
+      setStatuses((s) => [...s, ...addedStatuses]);
       return merged;
     });
   }, []);
+
+  const isCreditsError = (msg: string) =>
+    /credits?\s*exhaust|402|add credits|insufficient (funds|credits)|payment required/i.test(msg);
+
 
   const process = async () => {
     if (!files.length) return;
