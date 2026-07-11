@@ -106,12 +106,36 @@ function Index() {
     /credits?\s*exhaust|402|add credits|insufficient (funds|credits)|payment required/i.test(msg);
 
 
+  const setStatus = (index: number, status: FileStatus) => {
+    setStatuses((prev) => {
+      const next = [...prev];
+      while (next.length <= index) next.push("queued");
+      next[index] = status;
+      return next;
+    });
+  };
+
   const process = async () => {
     if (!files.length) return;
+    // Only work on files not already completed successfully
+    const pending = files
+      .map((f, i) => ({ f, i }))
+      .filter(({ i }) => statuses[i] !== "completed");
+    if (!pending.length) {
+      toast.info("All files are already processed");
+      return;
+    }
     setProcessing(true);
+    setCreditsExhausted(false);
     setProgress(0);
+    // Reset non-completed statuses to queued
+    setStatuses((prev) =>
+      files.map((_, i) => (prev[i] === "completed" ? "completed" : "queued")),
+    );
+
     const out: InvoiceRecord[] = [];
     let done = 0;
+    let halted = false;
 
     const failed = (f: File, msg: string): InvoiceRecord => ({
       fileName: f.name,
@@ -131,7 +155,7 @@ function Index() {
       rawText: "",
     });
 
-    const parsePdfWithRetry = async (f: File): Promise<InvoiceRecord> => {
+    const parsePdfWithRetry = async (f: File, i: number): Promise<InvoiceRecord> => {
       let lastErr: unknown;
       for (let attempt = 0; attempt < 4; attempt++) {
         try {
@@ -139,8 +163,13 @@ function Index() {
         } catch (e) {
           lastErr = e;
           const msg = (e as Error).message || "";
+          if (isCreditsError(msg)) {
+            halted = true;
+            throw e;
+          }
           const rateLimited = /429|rate|limit|quota/i.test(msg);
           if (!rateLimited) break;
+          setStatus(i, "retrying");
           // backoff: 2s, 5s, 10s, 20s
           await new Promise((r) => setTimeout(r, [2000, 5000, 10000, 20000][attempt]));
         }
@@ -152,26 +181,37 @@ function Index() {
     const CONCURRENCY = 4;
     let cursor = 0;
     const runNext = async (): Promise<void> => {
-      while (cursor < files.length) {
-        const i = cursor++;
-        const f = files[i];
+      while (cursor < pending.length) {
+        if (halted) return;
+        const { f, i } = pending[cursor++];
+        setStatus(i, "processing");
         const isExcel = /\.(xlsx|xls|csv)$/i.test(f.name);
         const newRecs: InvoiceRecord[] = [];
+        let hadCreditsError = false;
         try {
           if (isExcel) {
             const recs = await importInvoicesFromExcel(f);
             if (!recs.length) throw new Error("No invoice rows detected in sheet");
             newRecs.push(...recs);
           } else {
-            newRecs.push(await parsePdfWithRetry(f));
+            newRecs.push(await parsePdfWithRetry(f, i));
           }
         } catch (e) {
-          newRecs.push(failed(f, (e as Error).message));
+          const msg = (e as Error).message || "unknown error";
+          if (isCreditsError(msg)) {
+            hadCreditsError = true;
+            halted = true;
+            setStatus(i, "queued");
+          } else {
+            newRecs.push(failed(f, msg));
+          }
         }
+        if (hadCreditsError) return;
         out.push(...newRecs);
         done++;
-        setProgress(Math.round((done / files.length) * 100));
-        // Live update: push each processed invoice into the table immediately
+        const anyFail = newRecs.some((r) => r.issues.some((s) => s.startsWith("Failed to parse")));
+        setStatus(i, anyFail ? "failed" : "completed");
+        setProgress(Math.round((done / pending.length) * 100));
         setRecords((prev) => [...prev, ...newRecs]);
         for (const r of newRecs) {
           if (r.issues.some((s) => s.startsWith("Failed to parse"))) {
@@ -185,8 +225,15 @@ function Index() {
     // Reset the live-updating table before this run
     setRecords([]);
     await Promise.all(
-      Array.from({ length: Math.min(CONCURRENCY, files.length) }, runNext),
+      Array.from({ length: Math.min(CONCURRENCY, pending.length) }, runNext),
     );
+
+    if (halted) {
+      setCreditsExhausted(true);
+      toast.error("AI credits exhausted — extraction stopped");
+      setProcessing(false);
+      return;
+    }
 
     // Duplicate-invoice-number annotation across the whole batch
     const numCounts = new Map<string, number>();
@@ -199,6 +246,7 @@ function Index() {
     setProcessing(false);
     toast.success(`Processed ${out.length} invoice${out.length === 1 ? "" : "s"}`);
   };
+
 
   const totals = useMemo(() => {
     let taxable = 0, igst = 0, cgst = 0, sgst = 0, splits = 0, issues = 0;
