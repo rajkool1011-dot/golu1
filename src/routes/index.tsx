@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -247,6 +247,46 @@ function Index() {
     toast.success(`Processed ${out.length} invoice${out.length === 1 ? "" : "s"}`);
   };
 
+  // Keep a stable ref to the latest `process` so the auto-resume effect
+  // never captures a stale closure.
+  const processRef = useRef(process);
+  useEffect(() => {
+    processRef.current = process;
+  });
+
+  // Auto-resume flow when credits are exhausted:
+  //  - retry every 60s (countdown shown in banner)
+  //  - retry immediately when the tab regains focus (user likely just added credits)
+  const RETRY_INTERVAL_SEC = 60;
+  const [retryIn, setRetryIn] = useState(RETRY_INTERVAL_SEC);
+  useEffect(() => {
+    if (!creditsExhausted || processing) {
+      setRetryIn(RETRY_INTERVAL_SEC);
+      return;
+    }
+    setRetryIn(RETRY_INTERVAL_SEC);
+    const tick = setInterval(() => {
+      setRetryIn((s) => {
+        if (s <= 1) {
+          setCreditsExhausted(false);
+          void processRef.current();
+          return RETRY_INTERVAL_SEC;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    const onFocus = () => {
+      setCreditsExhausted(false);
+      void processRef.current();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(tick);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [creditsExhausted, processing]);
+
+
 
   const totals = useMemo(() => {
     let taxable = 0, igst = 0, cgst = 0, sgst = 0, splits = 0, issues = 0;
@@ -389,9 +429,9 @@ function Index() {
                       AI credits exhausted
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Further PDF extraction is paused. Add credits in workspace
-                      billing, then click <span className="font-medium">Resume</span> to continue
-                      with the remaining queued files.
+                      Extraction paused. Add credits in workspace billing — the
+                      queue will resume automatically when the tab regains focus,
+                      or in <span className="font-medium tabular-nums text-foreground">{retryIn}s</span> on the next auto-retry.
                     </p>
                   </div>
                   <Button
@@ -400,7 +440,7 @@ function Index() {
                     onClick={() => { setCreditsExhausted(false); void process(); }}
                     className="shrink-0"
                   >
-                    Resume
+                    Resume now
                   </Button>
                 </div>
               </Card>
