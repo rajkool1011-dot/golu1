@@ -233,32 +233,32 @@ function Index() {
                 <Upload className="h-7 w-7" aria-hidden="true" />
               </div>
               <p className="mt-4 text-sm font-medium text-foreground">
-                Drag &amp; drop PDF invoices here
+                Drag &amp; drop invoices here
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                or select individual files, or an entire folder
+                PDF, XLSX, XLS or CSV — individual files or an entire folder
               </p>
               <div className="mt-5 flex flex-wrap justify-center gap-2">
                 <label>
                   <input
                     type="file"
                     multiple
-                    accept="application/pdf"
+                    accept=".pdf,.xlsx,.xls,.csv,application/pdf"
                     className="sr-only"
-                    aria-label="Select PDF files"
+                    aria-label="Select invoice files"
                     onChange={(e) => e.target.files && onFiles(e.target.files)}
                   />
                   <Button asChild variant="default" className="min-h-11">
-                    <span>Select PDFs</span>
+                    <span>Select Files</span>
                   </Button>
                 </label>
                 <label>
                   <input
                     type="file"
                     multiple
-                    accept="application/pdf"
+                    accept=".pdf,.xlsx,.xls,.csv,application/pdf"
                     className="sr-only"
-                    aria-label="Select a folder of PDFs"
+                    aria-label="Select a folder of invoices"
                     // @ts-expect-error webkitdirectory not in types
                     webkitdirectory=""
                     directory=""
@@ -269,6 +269,7 @@ function Index() {
                   </Button>
                 </label>
               </div>
+
             </Card>
 
             {/* File queue */}
