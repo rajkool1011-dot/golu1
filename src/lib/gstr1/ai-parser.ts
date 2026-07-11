@@ -28,7 +28,13 @@ export async function parseInvoiceAI(file: File): Promise<InvoiceRecord> {
     },
   });
 
-  const rateSplits: RateSplit[] = (ai.rows ?? []).map((r) => ({
+  if (!ai.ok) {
+    throw Object.assign(new Error(ai.message), { code: ai.code });
+  }
+
+  const invoice = ai.invoice;
+
+  const rateSplits: RateSplit[] = (invoice.rows ?? []).map((r) => ({
     rate: Number(r.rate) || 0,
     taxableValue: Number(r.taxable_value) || 0,
     igst: Number(r.igst) || 0,
@@ -36,7 +42,7 @@ export async function parseInvoiceAI(file: File): Promise<InvoiceRecord> {
     sgst: Number(r.sgst) || 0,
   }));
 
-  const hsnItems = (ai.hsn ?? []).map((h) => ({
+  const hsnItems = (invoice.hsn ?? []).map((h) => ({
     hsn: (h.hsn ?? "").toString().trim(),
     description: (h.description ?? "").toString().trim(),
     uqc: ((h.uqc ?? "").toString().trim() || "OTH").toUpperCase(),
@@ -49,7 +55,7 @@ export async function parseInvoiceAI(file: File): Promise<InvoiceRecord> {
     cess: Number(h.cess) || 0,
   })).filter((h) => h.hsn || h.taxableValue > 0);
 
-  const customerGstin = ai.customer_gstin?.toUpperCase().trim() || null;
+  const customerGstin = invoice.customer_gstin?.toUpperCase().trim() || null;
   const category: "B2B" | "B2C" = customerGstin ? "B2B" : "B2C";
 
   const hasIgst = rateSplits.some((r) => r.igst > 0);
@@ -62,12 +68,12 @@ export async function parseInvoiceAI(file: File): Promise<InvoiceRecord> {
 
   const rec: InvoiceRecord = {
     fileName: file.name,
-    invoiceNumber: ai.invoice_no?.trim() || null,
-    invoiceDate: ai.invoice_date?.trim() || null,
+    invoiceNumber: invoice.invoice_no?.trim() || null,
+    invoiceDate: invoice.invoice_date?.trim() || null,
     customerGstin,
-    customerName: ai.customer_name?.trim() || null,
+    customerName: invoice.customer_name?.trim() || null,
     placeOfSupply:
-      normalizePlaceOfSupply(ai.place_of_supply) ??
+      normalizePlaceOfSupply(invoice.place_of_supply) ??
       (customerGstin
         ? (() => {
             const code = customerGstin.slice(0, 2);
@@ -75,7 +81,7 @@ export async function parseInvoiceAI(file: File): Promise<InvoiceRecord> {
             return name ? `${code}-${name}` : null;
           })()
         : null),
-    invoiceValue: ai.invoice_value ?? null,
+    invoiceValue: invoice.invoice_value ?? null,
     supplierGstin: null,
     supplierState: customerGstin ? stateFromGstin(customerGstin) : null,
     rateSplits,
