@@ -13,7 +13,18 @@ import {
 } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
-import { FileText, Upload, Download, AlertCircle, CheckCircle2, Loader2, Trash2 } from "lucide-react";
+import {
+  FileText,
+  Upload,
+  Download,
+  AlertCircle,
+  CheckCircle2,
+  Loader2,
+  Trash2,
+  Sparkles,
+  ShieldCheck,
+  FileSpreadsheet,
+} from "lucide-react";
 import type { InvoiceRecord } from "@/lib/gstr1/parser";
 import { parseInvoiceAI } from "@/lib/gstr1/ai-parser";
 import { exportGstr1Workbook } from "@/lib/gstr1/exporter";
@@ -94,7 +105,6 @@ function Index() {
       setProgress(Math.round(((i + 1) / files.length) * 100));
       if (i < files.length - 1) await new Promise((r) => setTimeout(r, 2500));
     }
-    // Duplicate detection
     const numCounts = new Map<string, number>();
     for (const r of out) if (r.invoiceNumber) numCounts.set(r.invoiceNumber, (numCounts.get(r.invoiceNumber) ?? 0) + 1);
     for (const r of out)
@@ -122,256 +132,379 @@ function Index() {
   }, [records]);
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-7xl px-6 py-10">
-        <header className="mb-8">
-          <h1 className="text-3xl font-bold tracking-tight">GSTR-1 Auto Prep</h1>
-          <p className="mt-1 text-muted-foreground">
-            Drop PDF tax invoices → get a GSTR-1 ready Excel. Everything runs in your browser.
-          </p>
-        </header>
-
-        {/* Dropzone */}
-        <Card
-          className={`border-2 border-dashed p-10 text-center transition-colors ${
-            dragOver ? "border-primary bg-primary/5" : "border-border"
-          }`}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragOver(true);
-          }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragOver(false);
-            if (e.dataTransfer.files.length) onFiles(e.dataTransfer.files);
-          }}
-        >
-          <Upload className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
-          <p className="mb-4 text-sm text-muted-foreground">
-            Drag &amp; drop PDF invoices here, or select files / a folder
-          </p>
-          <div className="flex justify-center gap-2">
-            <label>
-              <input
-                type="file"
-                multiple
-                accept="application/pdf"
-                className="hidden"
-                onChange={(e) => e.target.files && onFiles(e.target.files)}
-              />
-              <Button asChild variant="default">
-                <span>Select PDFs</span>
-              </Button>
-            </label>
-            <label>
-              <input
-                type="file"
-                multiple
-                accept="application/pdf"
-                className="hidden"
-                // @ts-expect-error webkitdirectory not in types
-                webkitdirectory=""
-                directory=""
-                onChange={(e) => e.target.files && onFiles(e.target.files)}
-              />
-              <Button asChild variant="outline">
-                <span>Select Folder</span>
-              </Button>
-            </label>
+    <div className="min-h-dvh bg-background text-foreground">
+      {/* Top nav */}
+      <header className="sticky top-0 z-30 border-b border-border/70 bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
+        <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:px-6">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground shadow-sm">
+            <FileSpreadsheet className="h-5 w-5" aria-hidden="true" />
           </div>
-        </Card>
+          <div className="min-w-0 flex-1">
+            <div className="truncate font-display text-sm font-semibold tracking-tight">
+              GSTR-1 Auto Prep
+            </div>
+            <div className="hidden truncate text-[11px] text-muted-foreground sm:block">
+              Invoice PDFs → GSTR-1 ready exports
+            </div>
+          </div>
+          <span className="hidden items-center gap-1.5 rounded-full border border-border bg-muted/60 px-3 py-1 text-[11px] font-medium text-muted-foreground md:inline-flex">
+            <ShieldCheck className="h-3.5 w-3.5 text-[color:var(--brand)]" aria-hidden="true" />
+            Runs 100% in your browser
+          </span>
+        </div>
+      </header>
 
-        {/* File queue */}
-        {files.length > 0 && (
-          <Card className="mt-6 p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <div className="text-sm font-medium">
-                {files.length} file{files.length === 1 ? "" : "s"} queued
+      <main id="main" className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:py-10">
+        {/* Hero band */}
+        <section
+          aria-labelledby="hero-title"
+          className="overflow-hidden rounded-2xl border border-border bg-[linear-gradient(135deg,var(--primary),color-mix(in_oklab,var(--brand)_70%,var(--primary)))] p-6 text-primary-foreground shadow-[var(--shadow-elegant)] sm:p-8"
+        >
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4 sm:items-center">
+            <div className="min-w-0">
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-medium ring-1 ring-white/15">
+                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> AI-assisted extraction
               </div>
-              <div className="flex gap-2">
-                <Button size="sm" variant="ghost" onClick={() => { setFiles([]); setRecords([]); }}>
-                  <Trash2 className="mr-1 h-4 w-4" /> Clear
-                </Button>
-                <Button size="sm" onClick={process} disabled={processing}>
-                  {processing ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <FileText className="mr-1 h-4 w-4" />}
-                  {processing ? "Processing…" : "Process invoices"}
-                </Button>
+              <h1 id="hero-title" className="mt-3 font-display text-2xl font-bold tracking-tight sm:text-3xl lg:text-4xl">
+                From PDF invoices to GSTR-1 in one click
+              </h1>
+              <p className="mt-2 max-w-xl text-sm text-primary-foreground/80 sm:text-base">
+                Drop your tax invoices. We auto rate-split, validate GSTINs, classify B2B / B2C,
+                and export the offline utility JSON, CSV, HSN and B2C files.
+              </p>
+            </div>
+            <div className="hidden shrink-0 rounded-xl bg-white/10 p-4 ring-1 ring-white/15 sm:block">
+              <div className="text-[11px] uppercase tracking-wider text-primary-foreground/70">Queued</div>
+              <div className="mt-1 font-display text-3xl font-bold tabular-nums">{files.length}</div>
+              <div className="text-[11px] text-primary-foreground/70">PDF files</div>
+            </div>
+          </div>
+        </section>
+
+        {/* Dashboard grid */}
+        <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+          {/* Main column */}
+          <div className="min-w-0 space-y-6">
+            {/* Dropzone */}
+            <Card
+              aria-label="Upload PDF invoices"
+              className={`border-2 border-dashed p-8 text-center transition-all sm:p-10 ${
+                dragOver
+                  ? "border-[color:var(--brand)] bg-[color:var(--brand)]/5 ring-4 ring-[color:var(--brand)]/10"
+                  : "border-border hover:border-[color:var(--brand)]/60"
+              }`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                if (e.dataTransfer.files.length) onFiles(e.dataTransfer.files);
+              }}
+            >
+              <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[color:var(--brand)]/10 text-[color:var(--brand)]">
+                <Upload className="h-7 w-7" aria-hidden="true" />
               </div>
-            </div>
-            {processing && <Progress value={progress} className="mb-2" />}
-            <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-              {files.slice(0, 20).map((f) => (
-                <span key={f.name} className="rounded bg-muted px-2 py-0.5">{f.name}</span>
-              ))}
-              {files.length > 20 && <span>+ {files.length - 20} more…</span>}
-            </div>
-          </Card>
-        )}
-
-        {/* Results */}
-        {records.length > 0 && (
-          <>
-            <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-6">
-              <Stat label="Invoices" value={records.length} />
-              <Stat label="Rate rows" value={totals.splits} />
-              <Stat label="Taxable" value={fmt(totals.taxable)} />
-              <Stat label="IGST" value={fmt(totals.igst)} />
-              <Stat label="CGST+SGST" value={fmt(totals.cgst + totals.sgst)} />
-              <Stat label="Issues" value={totals.issues} warn={totals.issues > 0} />
-            </div>
-
-            <div className="mt-6 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => {
-                const gstin = window.prompt("Your (supplier) GSTIN — 15 chars:")?.trim().toUpperCase() ?? "";
-                if (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9]$/.test(gstin)) {
-                  toast.error("Invalid supplier GSTIN");
-                  return;
-                }
-                const fp = window.prompt("Filing period MMYYYY (blank = use invoice date):", "")?.trim() || undefined;
-                exportGstr1Json(records, { supplierGstin: gstin, filingPeriod: fp });
-              }}>
-                <Download className="mr-2 h-4 w-4" /> Export GSTR-1 JSON
-              </Button>
-              <Button variant="outline" onClick={() => exportHsnWorkbook(records, { category: "B2B" })}>
-                <Download className="mr-2 h-4 w-4" /> HSN B2B CSV
-              </Button>
-              <Button variant="outline" onClick={() => exportHsnWorkbook(records, { category: "B2C" })}>
-                <Download className="mr-2 h-4 w-4" /> HSN B2C CSV
-              </Button>
-              <Button variant="outline" onClick={() => exportB2cWorkbook(records)}>
-                <Download className="mr-2 h-4 w-4" /> Export B2C CSV
-              </Button>
-              <Button variant="outline" onClick={() => exportDashboardWorkbook(records)}>
-                <Download className="mr-2 h-4 w-4" /> GST Dashboard XLSX
-              </Button>
-              <Button onClick={() => exportGstr1Workbook(records)}>
-                <Download className="mr-2 h-4 w-4" /> Export GSTR-1 CSV
-              </Button>
-            </div>
-
-            <Card className="mt-4 overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>File</TableHead>
-                    <TableHead>Invoice #</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>GSTIN</TableHead>
-                    <TableHead>POS</TableHead>
-                    <TableHead>Cat.</TableHead>
-                    <TableHead>Supply</TableHead>
-                    <TableHead className="text-right">Value</TableHead>
-                    <TableHead className="text-right">Taxable</TableHead>
-                    <TableHead className="text-right">IGST</TableHead>
-                    <TableHead className="text-right">CGST</TableHead>
-                    <TableHead className="text-right">SGST</TableHead>
-                    <TableHead>Rates</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {records.map((r, i) => {
-                    const t = r.rateSplits.reduce(
-                      (a, s) => ({
-                        taxable: a.taxable + s.taxableValue,
-                        igst: a.igst + s.igst,
-                        cgst: a.cgst + s.cgst,
-                        sgst: a.sgst + s.sgst,
-                      }),
-                      { taxable: 0, igst: 0, cgst: 0, sgst: 0 },
-                    );
-                    return (
-                    <TableRow key={i}>
-                      <TableCell className="max-w-[180px] truncate text-xs" title={r.fileName}>
-                        {r.fileName}
-                      </TableCell>
-                      <TableCell>{r.invoiceNumber ?? "—"}</TableCell>
-                      <TableCell>{r.invoiceDate ?? "—"}</TableCell>
-                      <TableCell className="max-w-[160px] truncate" title={r.customerName ?? ""}>
-                        {r.customerName ?? "—"}
-                      </TableCell>
-                      <TableCell className="font-mono text-xs">{r.customerGstin ?? "—"}</TableCell>
-                      <TableCell>{r.placeOfSupply ?? "—"}</TableCell>
-                      <TableCell>
-                        <Badge variant={r.category === "B2B" ? "default" : "secondary"}>
-                          {r.category}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{r.supplyType}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {r.invoiceValue != null ? fmt(r.invoiceValue) : "—"}
-                      </TableCell>
-                      <TableCell className="text-right">{fmt(t.taxable)}</TableCell>
-                      <TableCell className="text-right">{t.igst > 0 ? fmt(t.igst) : "—"}</TableCell>
-                      <TableCell className="text-right">{t.cgst > 0 ? fmt(t.cgst) : "—"}</TableCell>
-                      <TableCell className="text-right">{t.sgst > 0 ? fmt(t.sgst) : "—"}</TableCell>
-                      <TableCell className="text-xs">
-                        {r.rateSplits.map((s) => `${s.rate}%`).join(", ") || "—"}
-                      </TableCell>
-                      <TableCell>
-                        {r.issues.length === 0 ? (
-                          <span className="inline-flex items-center gap-1 text-green-600">
-                            <CheckCircle2 className="h-4 w-4" /> OK
-                          </span>
-                        ) : (
-                          <span
-                            className="inline-flex items-center gap-1 text-amber-600"
-                            title={r.issues.join("\n")}
-                          >
-                            <AlertCircle className="h-4 w-4" /> {r.issues.length}
-                          </span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                    );
-                  })}
-
-                </TableBody>
-              </Table>
+              <p className="mt-4 text-sm font-medium text-foreground">
+                Drag &amp; drop PDF invoices here
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                or select individual files, or an entire folder
+              </p>
+              <div className="mt-5 flex flex-wrap justify-center gap-2">
+                <label>
+                  <input
+                    type="file"
+                    multiple
+                    accept="application/pdf"
+                    className="sr-only"
+                    aria-label="Select PDF files"
+                    onChange={(e) => e.target.files && onFiles(e.target.files)}
+                  />
+                  <Button asChild variant="default" className="min-h-11">
+                    <span>Select PDFs</span>
+                  </Button>
+                </label>
+                <label>
+                  <input
+                    type="file"
+                    multiple
+                    accept="application/pdf"
+                    className="sr-only"
+                    aria-label="Select a folder of PDFs"
+                    // @ts-expect-error webkitdirectory not in types
+                    webkitdirectory=""
+                    directory=""
+                    onChange={(e) => e.target.files && onFiles(e.target.files)}
+                  />
+                  <Button asChild variant="outline" className="min-h-11">
+                    <span>Select Folder</span>
+                  </Button>
+                </label>
+              </div>
             </Card>
 
-            <GstDashboard records={records} />
-
-
-
-            {records.some((r) => r.issues.length) && (
-              <Card className="mt-4 p-4">
-                <div className="mb-2 flex items-center gap-2 text-sm font-medium">
-                  <AlertCircle className="h-4 w-4 text-amber-600" /> Validation issues
+            {/* File queue */}
+            {files.length > 0 && (
+              <Card className="p-4 sm:p-5">
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold">
+                      {files.length} file{files.length === 1 ? "" : "s"} queued
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      Ready to process • text-based PDFs supported
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => { setFiles([]); setRecords([]); }}
+                      aria-label="Clear file queue"
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
+                      <span className="hidden sm:inline">Clear</span>
+                    </Button>
+                    <Button size="sm" onClick={process} disabled={processing}>
+                      {processing ? (
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                      ) : (
+                        <FileText className="h-4 w-4" aria-hidden="true" />
+                      )}
+                      <span>{processing ? "Processing…" : "Process invoices"}</span>
+                    </Button>
+                  </div>
                 </div>
-                <ul className="space-y-1 text-xs text-muted-foreground">
-                  {records
-                    .filter((r) => r.issues.length)
-                    .map((r, i) => (
-                      <li key={i}>
-                        <span className="font-medium text-foreground">{r.fileName}</span>
-                        {r.invoiceNumber ? ` (#${r.invoiceNumber})` : ""}: {r.issues.join("; ")}
-                      </li>
-                    ))}
+                {processing && (
+                  <div className="mt-3">
+                    <Progress value={progress} aria-label={`Processing ${progress}%`} />
+                    <div className="mt-1 text-right text-[11px] tabular-nums text-muted-foreground">
+                      {progress}%
+                    </div>
+                  </div>
+                )}
+                <ul className="mt-3 flex flex-wrap gap-1.5 text-xs text-muted-foreground">
+                  {files.slice(0, 20).map((f) => (
+                    <li key={f.name} className="max-w-[220px] truncate rounded-md bg-muted px-2 py-0.5" title={f.name}>
+                      {f.name}
+                    </li>
+                  ))}
+                  {files.length > 20 && <li>+ {files.length - 20} more…</li>}
                 </ul>
               </Card>
             )}
-          </>
-        )}
 
-        <footer className="mt-10 text-center text-xs text-muted-foreground">
+            {/* Results */}
+            {records.length > 0 && (
+              <>
+                <Card className="p-4 sm:p-5">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h2 className="font-display text-base font-semibold tracking-tight">Exports</h2>
+                    <Badge variant="secondary" className="tabular-nums">
+                      {records.length} invoice{records.length === 1 ? "" : "s"}
+                    </Badge>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" onClick={() => {
+                      const gstin = window.prompt("Your (supplier) GSTIN — 15 chars:")?.trim().toUpperCase() ?? "";
+                      if (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9]$/.test(gstin)) {
+                        toast.error("Invalid supplier GSTIN");
+                        return;
+                      }
+                      const fp = window.prompt("Filing period MMYYYY (blank = use invoice date):", "")?.trim() || undefined;
+                      exportGstr1Json(records, { supplierGstin: gstin, filingPeriod: fp });
+                    }}>
+                      <Download className="h-4 w-4" aria-hidden="true" /> GSTR-1 JSON
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => exportHsnWorkbook(records, { category: "B2B" })}>
+                      <Download className="h-4 w-4" aria-hidden="true" /> HSN B2B
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => exportHsnWorkbook(records, { category: "B2C" })}>
+                      <Download className="h-4 w-4" aria-hidden="true" /> HSN B2C
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => exportB2cWorkbook(records)}>
+                      <Download className="h-4 w-4" aria-hidden="true" /> B2C CSV
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => exportDashboardWorkbook(records)}>
+                      <Download className="h-4 w-4" aria-hidden="true" /> Dashboard XLSX
+                    </Button>
+                    <Button size="sm" onClick={() => exportGstr1Workbook(records)}>
+                      <Download className="h-4 w-4" aria-hidden="true" /> GSTR-1 CSV
+                    </Button>
+                  </div>
+                </Card>
+
+                <Card className="overflow-hidden">
+                  <div className="border-b border-border px-4 py-3 sm:px-5">
+                    <h2 className="font-display text-base font-semibold tracking-tight">Invoices</h2>
+                    <p className="text-xs text-muted-foreground">Per-invoice totals with tax split</p>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>File</TableHead>
+                          <TableHead>Invoice #</TableHead>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Customer</TableHead>
+                          <TableHead>GSTIN</TableHead>
+                          <TableHead>POS</TableHead>
+                          <TableHead>Cat.</TableHead>
+                          <TableHead>Supply</TableHead>
+                          <TableHead className="text-right">Value</TableHead>
+                          <TableHead className="text-right">Taxable</TableHead>
+                          <TableHead className="text-right">IGST</TableHead>
+                          <TableHead className="text-right">CGST</TableHead>
+                          <TableHead className="text-right">SGST</TableHead>
+                          <TableHead>Rates</TableHead>
+                          <TableHead>Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {records.map((r, i) => {
+                          const t = r.rateSplits.reduce(
+                            (a, s) => ({
+                              taxable: a.taxable + s.taxableValue,
+                              igst: a.igst + s.igst,
+                              cgst: a.cgst + s.cgst,
+                              sgst: a.sgst + s.sgst,
+                            }),
+                            { taxable: 0, igst: 0, cgst: 0, sgst: 0 },
+                          );
+                          return (
+                            <TableRow key={i}>
+                              <TableCell className="max-w-[180px] truncate text-xs" title={r.fileName}>
+                                {r.fileName}
+                              </TableCell>
+                              <TableCell>{r.invoiceNumber ?? "—"}</TableCell>
+                              <TableCell>{r.invoiceDate ?? "—"}</TableCell>
+                              <TableCell className="max-w-[160px] truncate" title={r.customerName ?? ""}>
+                                {r.customerName ?? "—"}
+                              </TableCell>
+                              <TableCell className="font-mono text-xs">{r.customerGstin ?? "—"}</TableCell>
+                              <TableCell>{r.placeOfSupply ?? "—"}</TableCell>
+                              <TableCell>
+                                <Badge variant={r.category === "B2B" ? "default" : "secondary"}>
+                                  {r.category}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline">{r.supplyType}</Badge>
+                              </TableCell>
+                              <TableCell className="text-right tabular-nums">
+                                {r.invoiceValue != null ? fmt(r.invoiceValue) : "—"}
+                              </TableCell>
+                              <TableCell className="text-right tabular-nums">{fmt(t.taxable)}</TableCell>
+                              <TableCell className="text-right tabular-nums">{t.igst > 0 ? fmt(t.igst) : "—"}</TableCell>
+                              <TableCell className="text-right tabular-nums">{t.cgst > 0 ? fmt(t.cgst) : "—"}</TableCell>
+                              <TableCell className="text-right tabular-nums">{t.sgst > 0 ? fmt(t.sgst) : "—"}</TableCell>
+                              <TableCell className="text-xs">
+                                {r.rateSplits.map((s) => `${s.rate}%`).join(", ") || "—"}
+                              </TableCell>
+                              <TableCell>
+                                {r.issues.length === 0 ? (
+                                  <span className="inline-flex items-center gap-1 text-emerald-600">
+                                    <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                                    <span className="sr-only">OK</span>
+                                    <span aria-hidden="true">OK</span>
+                                  </span>
+                                ) : (
+                                  <span
+                                    className="inline-flex items-center gap-1 text-amber-600"
+                                    title={r.issues.join("\n")}
+                                  >
+                                    <AlertCircle className="h-4 w-4" aria-hidden="true" />
+                                    <span className="sr-only">{r.issues.length} issues:</span>
+                                    {r.issues.length}
+                                  </span>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </Card>
+
+                <GstDashboard records={records} />
+
+                {records.some((r) => r.issues.length) && (
+                  <Card className="p-4 sm:p-5">
+                    <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                      <AlertCircle className="h-4 w-4 text-amber-600" aria-hidden="true" />
+                      Validation issues
+                    </div>
+                    <ul className="space-y-1 text-xs text-muted-foreground">
+                      {records
+                        .filter((r) => r.issues.length)
+                        .map((r, i) => (
+                          <li key={i}>
+                            <span className="font-medium text-foreground">{r.fileName}</span>
+                            {r.invoiceNumber ? ` (#${r.invoiceNumber})` : ""}: {r.issues.join("; ")}
+                          </li>
+                        ))}
+                    </ul>
+                  </Card>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Right rail — summary */}
+          <aside aria-label="Summary" className="space-y-4 lg:sticky lg:top-20 lg:self-start">
+            <Card className="p-4">
+              <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                Session summary
+              </div>
+              <dl className="mt-3 grid grid-cols-2 gap-3">
+                <SummaryItem label="Invoices" value={records.length} />
+                <SummaryItem label="Rate rows" value={totals.splits} />
+                <SummaryItem label="Taxable" value={records.length ? fmt(totals.taxable) : "—"} />
+                <SummaryItem label="IGST" value={records.length ? fmt(totals.igst) : "—"} />
+                <SummaryItem label="CGST" value={records.length ? fmt(totals.cgst) : "—"} />
+                <SummaryItem label="SGST" value={records.length ? fmt(totals.sgst) : "—"} />
+              </dl>
+              {totals.issues > 0 && (
+                <div className="mt-3 flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700">
+                  <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  {totals.issues} invoice{totals.issues === 1 ? "" : "s"} need review
+                </div>
+              )}
+            </Card>
+
+            <Card className="p-4 text-xs text-muted-foreground">
+              <div className="mb-2 text-[11px] font-medium uppercase tracking-wider text-foreground">
+                Tips
+              </div>
+              <ul className="space-y-1.5 leading-relaxed">
+                <li>• Use text-based PDFs (not scanned images).</li>
+                <li>• Duplicate invoice numbers are flagged automatically.</li>
+                <li>• Exports match the GSTR-1 offline utility templates.</li>
+              </ul>
+            </Card>
+          </aside>
+        </div>
+
+        <footer className="mt-10 border-t border-border pt-6 text-center text-xs text-muted-foreground">
           Scanned PDFs (image-only) are not supported in this browser-only build — use text-based PDFs.
         </footer>
-      </div>
+      </main>
     </div>
   );
 }
 
-function Stat({ label, value, warn }: { label: string; value: string | number; warn?: boolean }) {
+function SummaryItem({ label, value }: { label: string; value: string | number }) {
   return (
-    <Card className="p-3">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={`mt-1 text-lg font-semibold ${warn ? "text-amber-600" : ""}`}>{value}</div>
-    </Card>
+    <div className="min-w-0 rounded-lg border border-border bg-muted/40 p-2.5">
+      <dt className="truncate text-[11px] text-muted-foreground">{label}</dt>
+      <dd className="mt-0.5 truncate font-display text-base font-semibold tabular-nums text-foreground">
+        {value}
+      </dd>
+    </div>
   );
 }
 
