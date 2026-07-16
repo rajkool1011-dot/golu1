@@ -47,42 +47,60 @@ export async function readPdfText(file: File): Promise<string> {
   (pdfjsLib as unknown as { GlobalWorkerOptions: { workerSrc: string } }).GlobalWorkerOptions.workerSrc = worker.default;
 
   const buf = await file.arrayBuffer();
-  const pdf = await (pdfjsLib as any).getDocument({ data: buf }).promise;
+  const pdf = await (pdfjsLib as any).getDocument({
+    data: buf,
+    disableFontFace: true,
+    useSystemFonts: false,
+    isEvalSupported: false,
+    verbosity: 0,
+  }).promise;
   const Y_TOL = 3;
   const out: string[] = [];
+  let pageErrors = 0;
   for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    const items = content.items as Array<{ str: string; transform: number[]; width?: number }>;
-    const lineMap = new Map<number, Array<{ str: string; x: number; width: number }>>();
-    for (const it of items) {
-      if (!it.str || !it.str.trim()) continue;
-      const yKey = Math.round(it.transform[5] / Y_TOL) * Y_TOL;
-      if (!lineMap.has(yKey)) lineMap.set(yKey, []);
-      lineMap.get(yKey)!.push({
-        str: it.str,
-        x: it.transform[4],
-        width: it.width ?? it.str.length * 5,
-      });
-    }
-    const sorted = [...lineMap.entries()]
-      .sort((a, b) => b[0] - a[0])
-      .map(([, arr]) => {
-        arr.sort((a, b) => a.x - b.x);
-        let line = "";
-        for (let j = 0; j < arr.length; j++) {
-          if (j > 0) {
-            const gap = arr[j].x - (arr[j - 1].x + arr[j - 1].width);
-            line += gap > 10 ? "  " : gap > 2 ? " " : "";
+    try {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const items = content.items as Array<{ str: string; transform: number[]; width?: number }>;
+      const lineMap = new Map<number, Array<{ str: string; x: number; width: number }>>();
+      for (const it of items) {
+        if (!it.str || !it.str.trim()) continue;
+        const yKey = Math.round(it.transform[5] / Y_TOL) * Y_TOL;
+        if (!lineMap.has(yKey)) lineMap.set(yKey, []);
+        lineMap.get(yKey)!.push({
+          str: it.str,
+          x: it.transform[4],
+          width: it.width ?? it.str.length * 5,
+        });
+      }
+      const sorted = [...lineMap.entries()]
+        .sort((a, b) => b[0] - a[0])
+        .map(([, arr]) => {
+          arr.sort((a, b) => a.x - b.x);
+          let line = "";
+          for (let j = 0; j < arr.length; j++) {
+            if (j > 0) {
+              const gap = arr[j].x - (arr[j - 1].x + arr[j - 1].width);
+              line += gap > 10 ? "  " : gap > 2 ? " " : "";
+            }
+            line += arr[j].str;
           }
-          line += arr[j].str;
-        }
-        return line;
-      });
-    out.push(sorted.join("\n"));
+          return line;
+        });
+      out.push(sorted.join("\n"));
+    } catch (err) {
+      pageErrors++;
+      console.warn(`pdfjs page ${i} failed:`, err);
+    }
+  }
+  if (out.length === 0 && pageErrors > 0) {
+    throw new Error(
+      `Failed to read PDF text (${pageErrors} page error${pageErrors === 1 ? "" : "s"}). The PDF may use unsupported fonts or be image-based — try re-saving/exporting it as a standard PDF.`,
+    );
   }
   return out.join("\n");
 }
+
 
 
 function num(s: string): number {
