@@ -58,9 +58,30 @@ export async function readPdfText(file: File): Promise<string> {
   const out: string[] = [];
   let pageErrors = 0;
   for (let i = 1; i <= pdf.numPages; i++) {
+    let content: any = null;
+    let lastErr: unknown = null;
+    // Try multiple getTextContent option sets to work around pdfjs font bugs (e.g. toHex)
+    const attempts: any[] = [
+      undefined,
+      { includeMarkedContent: false, disableNormalization: true },
+      { includeMarkedContent: false, disableNormalization: false },
+    ];
+    for (const opts of attempts) {
+      try {
+        const page = await pdf.getPage(i);
+        content = await (opts ? page.getTextContent(opts) : page.getTextContent());
+        lastErr = null;
+        break;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    if (!content) {
+      pageErrors++;
+      console.warn(`pdfjs page ${i} failed:`, lastErr);
+      continue;
+    }
     try {
-      const page = await pdf.getPage(i);
-      const content = await page.getTextContent();
       const items = content.items as Array<{ str: string; transform: number[]; width?: number }>;
       const lineMap = new Map<number, Array<{ str: string; x: number; width: number }>>();
       for (const it of items) {
@@ -90,16 +111,44 @@ export async function readPdfText(file: File): Promise<string> {
       out.push(sorted.join("\n"));
     } catch (err) {
       pageErrors++;
-      console.warn(`pdfjs page ${i} failed:`, err);
+      console.warn(`pdfjs page ${i} render failed:`, err);
     }
   }
   if (out.length === 0 && pageErrors > 0) {
+    // Last-resort fallback: try pdfjs-dist main build (non-legacy) which uses different font handling
+    try {
+      const pdfjs2: any = await import("pdfjs-dist");
+      const worker2: any = await import("pdfjs-dist/build/pdf.worker.min.mjs?url");
+      pdfjs2.GlobalWorkerOptions.workerSrc = worker2.default;
+      const pdf2 = await pdfjs2.getDocument({
+        data: buf,
+        disableFontFace: true,
+        useSystemFonts: false,
+        isEvalSupported: false,
+        verbosity: 0,
+      }).promise;
+      for (let i = 1; i <= pdf2.numPages; i++) {
+        try {
+          const page = await pdf2.getPage(i);
+          const c = await page.getTextContent({ disableNormalization: true });
+          const items = c.items as Array<{ str: string }>;
+          out.push(items.map((it) => it.str).filter(Boolean).join(" "));
+        } catch (e) {
+          console.warn(`fallback pdfjs page ${i} failed:`, e);
+        }
+      }
+    } catch (e) {
+      console.warn("fallback pdfjs load failed:", e);
+    }
+  }
+  if (out.length === 0) {
     throw new Error(
       `Failed to read PDF text (${pageErrors} page error${pageErrors === 1 ? "" : "s"}). The PDF may use unsupported fonts or be image-based — try re-saving/exporting it as a standard PDF.`,
     );
   }
   return out.join("\n");
 }
+
 
 
 
