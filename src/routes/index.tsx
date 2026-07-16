@@ -41,7 +41,7 @@ import type { InvoiceRecord } from "@/lib/gstr1/parser";
 import { parseInvoiceAI } from "@/lib/gstr1/ai-parser";
 import { importInvoicesFromExcel } from "@/lib/gstr1/excel-importer";
 import { exportGstr1Workbook } from "@/lib/gstr1/exporter";
-import { exportGstr1Json } from "@/lib/gstr1/json-exporter";
+import { exportGstr1Json, exportB2bJson, exportB2csJson, exportHsnJson, exportDocsJson } from "@/lib/gstr1/json-exporter";
 import { exportHsnWorkbook } from "@/lib/gstr1/hsn-exporter";
 import { exportB2cWorkbook } from "@/lib/gstr1/b2c-exporter";
 import { exportDashboardWorkbook } from "@/lib/gstr1/dashboard-exporter";
@@ -604,19 +604,41 @@ function Index() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-64">
                           <DropdownMenuLabel>GSTR-1 Return</DropdownMenuLabel>
-                          <DropdownMenuItem onClick={() => {
-                            const gstin = window.prompt("Your (supplier) GSTIN — 15 chars:")?.trim().toUpperCase() ?? "";
-                            if (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9]$/.test(gstin)) {
-                              toast.error("Invalid supplier GSTIN");
-                              return;
-                            }
-                            const fp = window.prompt("Filing period MMYYYY (blank = use invoice date):", "")?.trim() || undefined;
-                            exportGstr1Json(records, { supplierGstin: gstin, filingPeriod: fp });
-                          }}>
-                            <FileJson className="h-4 w-4" aria-hidden="true" />
-                            <span>GSTR-1 JSON</span>
-                            <span className="ml-auto text-[10px] text-muted-foreground">Offline utility</span>
-                          </DropdownMenuItem>
+                          {(() => {
+                            const promptOpts = () => {
+                              const gstin = window.prompt("Your (supplier) GSTIN — 15 chars:")?.trim().toUpperCase() ?? "";
+                              if (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9]$/.test(gstin)) {
+                                toast.error("Invalid supplier GSTIN");
+                                return null;
+                              }
+                              const fp = window.prompt("Filing period MMYYYY (blank = use invoice date):", "")?.trim() || undefined;
+                              return { supplierGstin: gstin, filingPeriod: fp };
+                            };
+                            return (
+                              <>
+                                <DropdownMenuItem onClick={() => { const o = promptOpts(); if (o) exportGstr1Json(records, o); }}>
+                                  <FileJson className="h-4 w-4" aria-hidden="true" />
+                                  <span>GSTR-1 JSON (Full)</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => { const o = promptOpts(); if (o) exportB2bJson(records, o); }}>
+                                  <FileJson className="h-4 w-4" aria-hidden="true" />
+                                  <span>B2B JSON</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => { const o = promptOpts(); if (o) exportB2csJson(records, o); }}>
+                                  <FileJson className="h-4 w-4" aria-hidden="true" />
+                                  <span>B2C (B2CS) JSON</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => { const o = promptOpts(); if (o) exportHsnJson(records, o); }}>
+                                  <FileJson className="h-4 w-4" aria-hidden="true" />
+                                  <span>HSN JSON</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => { const o = promptOpts(); if (o) exportDocsJson(records, o); }}>
+                                  <FileJson className="h-4 w-4" aria-hidden="true" />
+                                  <span>Document No. JSON</span>
+                                </DropdownMenuItem>
+                              </>
+                            );
+                          })()}
                           <DropdownMenuItem onClick={() => exportGstr1Workbook(records)}>
                             <FileSpreadsheet className="h-4 w-4" aria-hidden="true" />
                             <span>GSTR-1 CSV (B2B)</span>

@@ -162,15 +162,163 @@ export function buildGstr1Json(records: InvoiceRecord[], opts: JsonExportOptions
   };
 }
 
-export async function exportGstr1Json(records: InvoiceRecord[], opts: JsonExportOptions): Promise<void> {
-  const payload = buildGstr1Json(records, opts);
-  const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+function downloadJson(data: unknown, filename: string) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `gstr1_${payload.fp || "return"}.json`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+export async function exportGstr1Json(records: InvoiceRecord[], opts: JsonExportOptions): Promise<void> {
+  const payload = buildGstr1Json(records, opts);
+  downloadJson(payload, `gstr1_${payload.fp || "return"}.json`);
+}
+
+/** B2B section only */
+export function buildB2bJson(records: InvoiceRecord[], opts: JsonExportOptions) {
+  const full = buildGstr1Json(records, opts);
+  return { gstin: full.gstin, fp: full.fp, version: full.version, hash: full.hash, b2b: full.b2b };
+}
+
+/** B2CS section only */
+export function buildB2csJson(records: InvoiceRecord[], opts: JsonExportOptions) {
+  const full = buildGstr1Json(records, opts);
+  return { gstin: full.gstin, fp: full.fp, version: full.version, hash: full.hash, b2cs: full.b2cs };
+}
+
+/** HSN summary aggregated across all records */
+export function buildHsnJson(records: InvoiceRecord[], opts: JsonExportOptions) {
+  type Agg = {
+    hsn_sc: string; desc: string; uqc: string; rt: number;
+    qty: number; txval: number; iamt: number; camt: number; samt: number; csamt: number;
+  };
+  const map = new Map<string, Agg>();
+  for (const r of records) {
+    for (const h of r.hsnItems) {
+      const hsn_sc = (h.hsn || "").trim();
+      if (!hsn_sc && !h.taxableValue) continue;
+      const rt = Number(h.rate) || 0;
+      const uqc = (h.uqc || "OTH").toUpperCase();
+      const key = `${hsn_sc}||${rt}||${uqc}`;
+      const a = map.get(key) ?? {
+        hsn_sc, desc: h.description || "", uqc, rt,
+        qty: 0, txval: 0, iamt: 0, camt: 0, samt: 0, csamt: 0,
+      };
+      a.qty += Number(h.quantity) || 0;
+      a.txval += Number(h.taxableValue) || 0;
+      a.iamt += Number(h.igst) || 0;
+      a.camt += Number(h.cgst) || 0;
+      a.samt += Number(h.sgst) || 0;
+      a.csamt += Number(h.cess) || 0;
+      map.set(key, a);
+    }
+  }
+  const data = Array.from(map.values()).map((a, i) => ({
+    num: i + 1,
+    hsn_sc: a.hsn_sc,
+    desc: a.desc,
+    uqc: a.uqc,
+    qty: round2(a.qty),
+    rt: a.rt,
+    txval: round2(a.txval),
+    iamt: round2(a.iamt),
+    camt: round2(a.camt),
+    samt: round2(a.samt),
+    csamt: round2(a.csamt),
+  }));
+  const fp = opts.filingPeriod || records.map((r) => fpFromDate(r.invoiceDate)).find((v): v is string => !!v) || "";
+  return {
+    gstin: opts.supplierGstin.trim().toUpperCase(),
+    fp,
+    version: "GST3.2.4",
+    hash: "hash",
+    hsn: { data },
+  };
+}
+
+/** Doc issue section — invoice numbers issued (doc_num 1 = outward invoices) */
+export function buildDocsJson(records: InvoiceRecord[], opts: JsonExportOptions) {
+  const nums = records
+    .map((r) => (r.invoiceNumber ?? "").trim())
+    .filter((n) => !!n);
+
+  // Split into consecutive ranges based on numeric suffix
+  type Range = { from: string; to: string; totnum: number };
+  const ranges: Range[] = [];
+  const parsed = nums.map((n) => {
+    const m = n.match(/^(.*?)(\d+)$/);
+    return m ? { prefix: m[1], num: parseInt(m[2], 10), width: m[2].length, raw: n } : null;
+  });
+  const grouped = new Map<string, { num: number; width: number; raw: string }[]>();
+  for (const p of parsed) {
+    if (!p) continue;
+    const arr = grouped.get(p.prefix) ?? [];
+    arr.push({ num: p.num, width: p.width, raw: p.raw });
+    grouped.set(p.prefix, arr);
+  }
+  for (const [prefix, list] of grouped) {
+    list.sort((a, b) => a.num - b.num);
+    let start = 0;
+    for (let i = 1; i <= list.length; i++) {
+      if (i === list.length || list[i].num !== list[i - 1].num + 1) {
+        const a = list[start];
+        const b = list[i - 1];
+        ranges.push({
+          from: `${prefix}${String(a.num).padStart(a.width, "0")}`,
+          to: `${prefix}${String(b.num).padStart(b.width, "0")}`,
+          totnum: b.num - a.num + 1,
+        });
+        start = i;
+      }
+    }
+  }
+  // Non-numeric invoice numbers → each as its own single-entry range
+  for (const p of parsed) {
+    if (p) continue;
+  }
+  nums.forEach((n, idx) => {
+    if (!parsed[idx]) ranges.push({ from: n, to: n, totnum: 1 });
+  });
+
+  const docs = ranges.map((r, i) => ({
+    num: i + 1,
+    from: r.from,
+    to: r.to,
+    totnum: r.totnum,
+    cancel: 0,
+    net_issue: r.totnum,
+  }));
+
+  const fp = opts.filingPeriod || records.map((r) => fpFromDate(r.invoiceDate)).find((v): v is string => !!v) || "";
+  return {
+    gstin: opts.supplierGstin.trim().toUpperCase(),
+    fp,
+    version: "GST3.2.4",
+    hash: "hash",
+    doc_issue: {
+      doc_det: [{ doc_num: 1, doc_typ: "Invoices for outward supply", docs }],
+    },
+  };
+}
+
+export function exportB2bJson(records: InvoiceRecord[], opts: JsonExportOptions) {
+  const p = buildB2bJson(records, opts);
+  downloadJson(p, `gstr1_b2b_${p.fp || "return"}.json`);
+}
+export function exportB2csJson(records: InvoiceRecord[], opts: JsonExportOptions) {
+  const p = buildB2csJson(records, opts);
+  downloadJson(p, `gstr1_b2cs_${p.fp || "return"}.json`);
+}
+export function exportHsnJson(records: InvoiceRecord[], opts: JsonExportOptions) {
+  const p = buildHsnJson(records, opts);
+  downloadJson(p, `gstr1_hsn_${p.fp || "return"}.json`);
+}
+export function exportDocsJson(records: InvoiceRecord[], opts: JsonExportOptions) {
+  const p = buildDocsJson(records, opts);
+  downloadJson(p, `gstr1_docs_${p.fp || "return"}.json`);
 }
