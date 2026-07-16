@@ -41,7 +41,7 @@ import type { InvoiceRecord } from "@/lib/gstr1/parser";
 import { parseInvoiceAI } from "@/lib/gstr1/ai-parser";
 import { importInvoicesFromExcel } from "@/lib/gstr1/excel-importer";
 import { exportGstr1Workbook } from "@/lib/gstr1/exporter";
-import { exportGstr1Json } from "@/lib/gstr1/json-exporter";
+import { exportGstr1Json, exportB2bJson, exportB2csJson, exportHsnJson, exportDocsJson } from "@/lib/gstr1/json-exporter";
 import { exportHsnWorkbook } from "@/lib/gstr1/hsn-exporter";
 import { exportB2cWorkbook } from "@/lib/gstr1/b2c-exporter";
 import { exportDashboardWorkbook } from "@/lib/gstr1/dashboard-exporter";
