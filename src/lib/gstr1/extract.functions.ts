@@ -3,63 +3,66 @@ import { z } from "zod";
 
 const SYSTEM_PROMPT = `You are an Indian GST Invoice Extraction Engine.
 
-Your task is to extract invoice information with 100% accuracy.
+Extract ONLY the following fields from the uploaded invoice.
+
+Return JSON only.
+
+{
+  "invoice_no":"",
+  "invoice_date":"",
+  "buyer_name":"",
+  "buyer_gstin":"",
+  "place_of_supply":"",
+  "invoice_value":0,
+  "gst_data":[
+    {
+      "gst_rate":0,
+      "taxable_value":0,
+      "igst":0,
+      "cgst":0,
+      "sgst":0
+    }
+  ]
+}
 
 Rules:
-1. Never guess any value.
-2. Read every field exactly as printed.
-3. Preserve Invoice Number / GSTIN / Customer Name / Invoice Date exactly.
-4. Detect Place of Supply.
-5. Detect whether IGST or CGST+SGST.
-6. Group invoice according to GST Rate for "rows".
-7. Also extract every HSN/SAC line item into "hsn": one entry per line item.
-   - hsn: the HSN or SAC code as printed (digits only if possible).
-   - description: item description text.
-   - uqc: unit of measure printed on the line (e.g. NOS, KGS, PCS, MTR, BAG). If absent use "OTH".
-   - quantity: numeric quantity of that line.
-   - rate: GST rate % of that line (0/3/5/12/18/28).
-   - taxable_value: taxable amount of that line.
-   - igst / cgst / sgst / cess: tax amounts of that line (0 if not applicable).
-8. Verify Taxable + GST = Invoice Total.
-9. Return JSON only. Missing fields = null. No explanations.
+- Never guess values.
+- Preserve invoice number exactly.
+- Preserve GSTIN exactly.
+- Extract buyer name exactly.
+- Detect Place of Supply.
+- Detect Invoice Value.
+- Group tax by GST Rate.
+- If invoice contains 5%,12%,18%,28%, create separate objects.
+- Ignore HSN.
+- Ignore Quantity.
+- Ignore UQC.
+- Ignore Item Description.
+- Ignore Bank Details.
+- Ignore Terms & Conditions.
+- Return valid JSON only.`;
 
-Return this exact JSON shape:
-{
- "invoice_no": "",
- "invoice_date": "",
- "customer_name": "",
- "customer_gstin": "",
- "place_of_supply": "",
- "invoice_value": 0,
- "rows": [
-   { "rate": 18, "taxable_value": 0, "igst": 0, "cgst": 0, "sgst": 0 }
- ],
- "hsn": [
-   { "hsn": "", "description": "", "uqc": "", "quantity": 0, "rate": 18, "taxable_value": 0, "igst": 0, "cgst": 0, "sgst": 0, "cess": 0 }
- ]
-}`;
-
-const RowSchema = z.object({
-  rate: z.number(),
+const GstRowSchema = z.object({
+  gst_rate: z.number().nullable().default(0),
   taxable_value: z.number().nullable().default(0),
   igst: z.number().nullable().default(0),
   cgst: z.number().nullable().default(0),
   sgst: z.number().nullable().default(0),
 });
 
-const HsnSchema = z.object({
-  hsn: z.string().nullable().default(""),
-  description: z.string().nullable().default(""),
-  uqc: z.string().nullable().default(""),
-  quantity: z.number().nullable().default(0),
-  rate: z.number().nullable().default(0),
-  taxable_value: z.number().nullable().default(0),
-  igst: z.number().nullable().default(0),
-  cgst: z.number().nullable().default(0),
-  sgst: z.number().nullable().default(0),
-  cess: z.number().nullable().default(0),
+const AiResponseSchema = z.object({
+  invoice_no: z.string().nullable().default(null),
+  invoice_date: z.string().nullable().default(null),
+  buyer_name: z.string().nullable().default(null),
+  buyer_gstin: z.string().nullable().default(null),
+  place_of_supply: z.string().nullable().default(null),
+  invoice_value: z.number().nullable().default(null),
+  gst_data: z.array(GstRowSchema).default([]),
 });
 
+// Internal shape used by the rest of the app (ai-parser expects `rows`, `hsn`,
+// `customer_name`, `customer_gstin`). We keep that stable and map the new
+// AI response into it.
 const InvoiceSchema = z.object({
   invoice_no: z.string().nullable(),
   invoice_date: z.string().nullable(),
@@ -67,9 +70,20 @@ const InvoiceSchema = z.object({
   customer_gstin: z.string().nullable(),
   place_of_supply: z.string().nullable(),
   invoice_value: z.number().nullable(),
-  rows: z.array(RowSchema).default([]),
-  hsn: z.array(HsnSchema).default([]),
+  rows: z
+    .array(
+      z.object({
+        rate: z.number(),
+        taxable_value: z.number().nullable().default(0),
+        igst: z.number().nullable().default(0),
+        cgst: z.number().nullable().default(0),
+        sgst: z.number().nullable().default(0),
+      }),
+    )
+    .default([]),
+  hsn: z.array(z.any()).default([]),
 });
+
 
 export type ExtractedInvoice = z.infer<typeof InvoiceSchema>;
 
@@ -273,8 +287,25 @@ export const extractInvoiceWithAI = createServerFn({ method: "POST" })
         } satisfies ExtractInvoiceResult;
       }
     }
+    const ai = AiResponseSchema.parse(parsed);
+    const mapped = {
+      invoice_no: ai.invoice_no,
+      invoice_date: ai.invoice_date,
+      customer_name: ai.buyer_name,
+      customer_gstin: ai.buyer_gstin,
+      place_of_supply: ai.place_of_supply,
+      invoice_value: ai.invoice_value,
+      rows: (ai.gst_data ?? []).map((r) => ({
+        rate: Number(r.gst_rate) || 0,
+        taxable_value: Number(r.taxable_value) || 0,
+        igst: Number(r.igst) || 0,
+        cgst: Number(r.cgst) || 0,
+        sgst: Number(r.sgst) || 0,
+      })),
+      hsn: [],
+    };
     return {
       ok: true,
-      invoice: InvoiceSchema.parse(parsed),
+      invoice: InvoiceSchema.parse(mapped),
     } satisfies ExtractInvoiceResult;
   });
