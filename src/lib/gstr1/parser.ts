@@ -596,7 +596,6 @@ function extractRateSplits(text: string): RateSplit[] {
 export async function parseInvoicePdf(file: File): Promise<InvoiceRecord> {
   const text = await readPdfText(file);
   const gstins = findGstins(text);
-  // Assume the first GSTIN found is the supplier (usually at top), the second is customer.
   const supplierGstin = gstins[0] ?? null;
   const customerGstin = gstins[1] ?? null;
 
@@ -605,6 +604,7 @@ export async function parseInvoicePdf(file: File): Promise<InvoiceRecord> {
   if (!placeOfSupply && customerGstin) placeOfSupply = stateFromGstin(customerGstin);
 
   const rateSplits = extractRateSplits(text);
+  const hsnItems = extractHsnItems(text);
 
   const category: "B2B" | "B2C" = customerGstin ? "B2B" : "B2C";
   const supplyType: InvoiceRecord["supplyType"] =
@@ -614,18 +614,16 @@ export async function parseInvoicePdf(file: File): Promise<InvoiceRecord> {
         : "Interstate"
       : "Unknown";
 
-  // Rebalance IGST vs CGST/SGST based on supply type (parser can't know upfront).
-  for (const r of rateSplits) {
-    if (supplyType === "Intrastate" && r.igst > 0 && r.cgst === 0 && r.sgst === 0) {
-      r.cgst = r.igst / 2;
-      r.sgst = r.igst / 2;
-      r.igst = 0;
-    } else if (supplyType === "Interstate" && r.igst === 0 && (r.cgst > 0 || r.sgst > 0)) {
-      r.igst = r.cgst + r.sgst;
-      r.cgst = 0;
-      r.sgst = 0;
-    }
-  }
+  // Tax-type enforcement per user rules:
+  // - Seller State == Place of Supply → keep CGST/SGST as printed, force IGST = 0.
+  // - Seller State != Place of Supply → keep IGST as printed, force CGST = SGST = 0.
+  //   Never split IGST into CGST/SGST; never fabricate values.
+  const applyTaxType = <T extends { igst: number; cgst: number; sgst: number }>(r: T) => {
+    if (supplyType === "Intrastate") r.igst = 0;
+    else if (supplyType === "Interstate") { r.cgst = 0; r.sgst = 0; }
+  };
+  for (const r of rateSplits) applyTaxType(r);
+  for (const h of hsnItems) applyTaxType(h);
 
   const rec: InvoiceRecord = {
     fileName: file.name,
@@ -638,7 +636,7 @@ export async function parseInvoicePdf(file: File): Promise<InvoiceRecord> {
     supplierGstin,
     supplierState,
     rateSplits,
-    hsnItems: [],
+    hsnItems,
     category,
     supplyType,
     issues: [],
@@ -649,28 +647,77 @@ export async function parseInvoicePdf(file: File): Promise<InvoiceRecord> {
   return rec;
 }
 
+function extractHsnItems(text: string): HsnItem[] {
+  const items = new Map<string, HsnItem>();
+  const validRates = new Set([0, 3, 5, 12, 18, 28]);
+  for (const raw of text.split(/\r?\n/)) {
+    const ln = raw.replace(/\s+/g, " ").trim();
+    if (!ln || ln.length < 10) continue;
+    if (/^(hsn|sac|s\.?\s*no|description|item|particulars|total|grand|tax\s*rate)/i.test(ln)) continue;
+    const hsnMatch = ln.match(/\b(\d{4,8})\b/);
+    const rateMatch = ln.match(/(\d{1,2}(?:\.\d+)?)\s*%/);
+    if (!hsnMatch || !rateMatch) continue;
+    const hsn = hsnMatch[1];
+    const rate = Math.round(parseFloat(rateMatch[1]));
+    if (!validRates.has(rate)) continue;
+    const amounts = [...ln.matchAll(/-?[\d,]+\.\d{2}/g)].map((m) => num(m[0]));
+    if (amounts.length === 0) continue;
+    const sorted = [...amounts].sort((a, b) => b - a);
+    const taxable = sorted[1] ?? sorted[0];
+    if (taxable <= 0) continue;
+    const qtyMatch = ln.match(/\b(\d{1,6}(?:\.\d{1,3})?)\s*(?:NOS|PCS|UNT|KGS?|MTR|LTR|BOX|SET|EA)\b/i);
+    const qty = qtyMatch ? parseFloat(qtyMatch[1]) : 0;
+
+    const key = `${hsn}|${rate}`;
+    let it = items.get(key);
+    if (!it) {
+      it = { hsn, description: "", uqc: qtyMatch?.[0]?.replace(/[\d.\s]/g, "") ?? "", quantity: 0, rate, taxableValue: 0, igst: 0, cgst: 0, sgst: 0, cess: 0 };
+      items.set(key, it);
+    }
+    it.quantity += qty;
+    it.taxableValue += taxable;
+  }
+  return [...items.values()];
+}
+
 function validate(rec: InvoiceRecord) {
-  if (!rec.invoiceNumber) rec.issues.push("Missing invoice number");
+  if (!rec.invoiceNumber || !rec.invoiceNumber.trim()) rec.issues.push("Invoice number is empty");
   if (!rec.invoiceDate) rec.issues.push("Missing invoice date");
   if (!rec.invoiceValue) rec.issues.push("Missing invoice value");
   if (rec.rateSplits.length === 0) rec.issues.push("No GST rate/tax amounts detected");
-  if (rec.category === "B2B" && rec.customerGstin) {
-    if (!isValidGstinLite(rec.customerGstin)) rec.issues.push("Invalid customer GSTIN format");
-  }
-  // Consistency: for each rate, tax ≈ taxable * rate/100 (±2)
+  if (rec.customerGstin && rec.customerGstin.length !== 15)
+    rec.issues.push("Customer GSTIN must be 15 characters");
+  if (rec.supplierGstin && rec.supplierGstin.length !== 15)
+    rec.issues.push("Supplier GSTIN must be 15 characters");
+  if (rec.category === "B2B" && rec.customerGstin && !isValidGstinLite(rec.customerGstin))
+    rec.issues.push("Invalid customer GSTIN format");
+
+  let sumTaxable = 0;
+  let sumTax = 0;
   for (const r of rec.rateSplits) {
     const totalTax = r.igst + r.cgst + r.sgst;
+    sumTaxable += r.taxableValue;
+    sumTax += totalTax;
     const expected = (r.taxableValue * r.rate) / 100;
     if (r.taxableValue > 0 && Math.abs(totalTax - expected) > Math.max(2, expected * 0.02)) {
       rec.issues.push(
         `Tax mismatch @${r.rate}%: taxable ${r.taxableValue.toFixed(2)}, tax ${totalTax.toFixed(2)}, expected ~${expected.toFixed(2)}`,
       );
     }
-    // Interstate should only have IGST; Intrastate should have CGST+SGST
     if (rec.supplyType === "Interstate" && (r.cgst > 0 || r.sgst > 0))
       rec.issues.push(`@${r.rate}%: Interstate invoice has CGST/SGST`);
     if (rec.supplyType === "Intrastate" && r.igst > 0)
       rec.issues.push(`@${r.rate}%: Intrastate invoice has IGST`);
+  }
+
+  if (rec.invoiceValue && sumTaxable > 0) {
+    const computed = sumTaxable + sumTax;
+    const tol = Math.max(2, rec.invoiceValue * 0.01);
+    if (Math.abs(computed - rec.invoiceValue) > tol) {
+      rec.issues.push(
+        `Value mismatch: taxable + GST (${computed.toFixed(2)}) ≠ invoice value (${rec.invoiceValue.toFixed(2)})`,
+      );
+    }
   }
 }
 
