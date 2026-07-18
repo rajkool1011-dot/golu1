@@ -141,12 +141,24 @@ export async function readPdfText(file: File): Promise<string> {
       console.warn("fallback pdfjs load failed:", e);
     }
   }
-  if (out.length === 0) {
+  const joined = out.join("\n").trim();
+  // If pdfjs extracted little to no text, the PDF is likely scanned/image-based.
+  // Fall back to OCR so downstream extraction still gets text.
+  if (joined.length < 40) {
+    try {
+      const { ocrPdf } = await import("./ocr");
+      const ocrText = (await ocrPdf(file)).trim();
+      if (ocrText.length > joined.length) return ocrText;
+    } catch (e) {
+      console.warn("OCR fallback failed:", e);
+    }
+  }
+  if (!joined) {
     throw new Error(
-      `Failed to read PDF text (${pageErrors} page error${pageErrors === 1 ? "" : "s"}). The PDF may use unsupported fonts or be image-based — try re-saving/exporting it as a standard PDF.`,
+      `Failed to read PDF text (${pageErrors} page error${pageErrors === 1 ? "" : "s"}). The PDF may be image-based and OCR fallback also failed.`,
     );
   }
-  return out.join("\n");
+  return joined;
 }
 
 
