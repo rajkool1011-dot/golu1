@@ -287,8 +287,25 @@ export const extractInvoiceWithAI = createServerFn({ method: "POST" })
         } satisfies ExtractInvoiceResult;
       }
     }
+    const ai = AiResponseSchema.parse(parsed);
+    const mapped = {
+      invoice_no: ai.invoice_no,
+      invoice_date: ai.invoice_date,
+      customer_name: ai.buyer_name,
+      customer_gstin: ai.buyer_gstin,
+      place_of_supply: ai.place_of_supply,
+      invoice_value: ai.invoice_value,
+      rows: (ai.gst_data ?? []).map((r) => ({
+        rate: Number(r.gst_rate) || 0,
+        taxable_value: Number(r.taxable_value) || 0,
+        igst: Number(r.igst) || 0,
+        cgst: Number(r.cgst) || 0,
+        sgst: Number(r.sgst) || 0,
+      })),
+      hsn: [],
+    };
     return {
       ok: true,
-      invoice: InvoiceSchema.parse(parsed),
+      invoice: InvoiceSchema.parse(mapped),
     } satisfies ExtractInvoiceResult;
   });
