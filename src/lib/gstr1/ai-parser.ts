@@ -9,8 +9,9 @@ function isValidGstinLite(g: string) {
 export async function parseInvoiceAI(file: File): Promise<InvoiceRecord> {
   const text = (await readPdfText(file)).slice(0, 45000);
   if (!text.trim()) {
-    throw new Error("No readable PDF text found. Please upload a text-based invoice PDF.");
+    throw new Error("No readable text found in PDF (even after OCR).");
   }
+
 
   const ai = await extractInvoiceWithAI({
     data: {
