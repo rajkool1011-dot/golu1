@@ -368,6 +368,81 @@ function extractRateSplits(text: string): RateSplit[] {
   };
   const AMT = "([\\d,]+(?:\\.\\d{1,2})?)";
 
+  // Heuristic 0: Tax-summary table. Locate a header row that lists
+  // "Tax Rate ... Taxable ... (IGST|CGST|SGST) ... Total", then read the
+  // next lines until "Total"/end for `<rate>% <taxable> <tax...> <total>` rows.
+  {
+    const lines = text.split(/\r?\n/);
+    // Find any header line mentioning Tax Rate + Taxable
+    for (let i = 0; i < lines.length; i++) {
+      const h = lines[i];
+      if (!/tax\s*rate/i.test(h) || !/taxable/i.test(h)) continue;
+      const header = h.toLowerCase();
+      const hasIgst = /igst/.test(header);
+      const hasCgst = /cgst/.test(header);
+      const hasSgst = /sgst|utgst/.test(header);
+      // Read up to 10 following lines or until we hit a "Total" summary line only.
+      for (let j = i + 1; j < Math.min(lines.length, i + 12); j++) {
+        const ln = lines[j].trim();
+        if (!ln) continue;
+        // Stop at a Grand Total / Total line that has no rate marker.
+        if (/^(grand\s*total|total)\b/i.test(ln) && !/\d\s*%/.test(ln)) break;
+        // Row: <rate>% n n n [n] [n]
+        const rowRe = new RegExp(`(\\d{1,2}(?:\\.\\d+)?)\\s*%\\s+${AMT}(?:\\s+${AMT})?(?:\\s+${AMT})?(?:\\s+${AMT})?(?:\\s+${AMT})?`, "i");
+        const rm = ln.match(rowRe);
+        if (!rm) continue;
+        const rate = Math.round(parseFloat(rm[1]));
+        if (!validRates.includes(rate)) continue;
+        const nums = [rm[2], rm[3], rm[4], rm[5], rm[6]].filter(Boolean).map(num);
+        if (nums.length < 2) continue;
+        const taxable = nums[0];
+        if (taxable <= 0) continue;
+        const b = ensure(rate);
+        b.taxableValue = Math.max(b.taxableValue, taxable);
+        const rest = nums.slice(1);
+        // Prefer explicit column mapping when the header names the columns.
+        if (hasIgst && hasCgst && hasSgst && rest.length >= 3) {
+          b.igst += rest[0]; b.cgst += rest[1]; b.sgst += rest[2];
+        } else if (hasCgst && hasSgst && rest.length >= 2) {
+          b.cgst += rest[0]; b.sgst += rest[1];
+        } else if (hasIgst && rest.length >= 1) {
+          b.igst += rest[0];
+        } else {
+          // Unknown columns: infer from expected tax ≈ taxable*rate/100
+          const expected = (taxable * rate) / 100;
+          // Pick the single tax number matching expected (±20%)
+          const tax = rest.find((v) => Math.abs(v - expected) <= Math.max(2, expected * 0.2)) ?? rest[0];
+          // Assume intrastate split (CGST+SGST) as safe default; parser rebalances later.
+          b.cgst += tax / 2; b.sgst += tax / 2;
+        }
+      }
+    }
+  }
+
+  // Heuristic 0b: Standalone `<rate>%  <taxable> <tax> <total>` line anywhere.
+  {
+    const re = /(\d{1,2}(?:\.\d+)?)\s*%\s+([\d,]+(?:\.\d{1,2})?)\s+([\d,]+(?:\.\d{1,2})?)\s+([\d,]+(?:\.\d{1,2})?)/g;
+    let mm;
+    while ((mm = re.exec(text))) {
+      const rate = Math.round(parseFloat(mm[1]));
+      if (!validRates.includes(rate)) continue;
+      const taxable = num(mm[2]);
+      const tax = num(mm[3]);
+      const total = num(mm[4]);
+      if (taxable <= 0 || tax <= 0) continue;
+      // Validate: taxable + tax ≈ total (±2) AND tax ≈ taxable*rate/100 (±20%)
+      const expected = (taxable * rate) / 100;
+      if (Math.abs(taxable + tax - total) > Math.max(2, total * 0.02)) continue;
+      if (Math.abs(tax - expected) > Math.max(2, expected * 0.2)) continue;
+      const b = ensure(rate);
+      if (b.taxableValue === 0) b.taxableValue = taxable;
+      // Default to intrastate split; rebalancer in parseInvoicePdf handles IGST case.
+      b.cgst += tax / 2; b.sgst += tax / 2;
+    }
+  }
+
+
+
   // Heuristic 1: explicit IGST / CGST / SGST with % on same line.
   const withPct = (label: string) =>
     new RegExp(`${label}[^\\n]{0,40}?(\\d{1,2}(?:\\.\\d+)?)\\s*%[^\\n]{0,60}?${AMT}(?:[^\\n]{0,40}?${AMT})?`, "gi");
