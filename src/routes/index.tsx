@@ -693,6 +693,7 @@ function Index() {
                           <TableHead className="text-right">CGST</TableHead>
                           <TableHead className="text-right">SGST</TableHead>
                           <TableHead>Rates</TableHead>
+                          <TableHead>Source</TableHead>
                           <TableHead>Status</TableHead>
                         </TableRow>
                       </TableHeader>
