@@ -306,18 +306,34 @@ function normalizeDate(raw: string): string {
 }
 
 
-function extractPlaceOfSupply(text: string): string | null {
-  const patterns = [
+function extractPlaceOfSupply(text: string, customerGstin: string | null): string | null {
+  // 1. Explicit "Place of Supply" label — highest priority.
+  const explicit = text.match(
     /Place\s*of\s*Supply\s*[:\-]?\s*([A-Za-z0-9\-\s&()]+?)(?:\n|State|GSTIN|\(|$)/i,
-    /\bState\s*(?:Name)?\s*[:\-]\s*([A-Za-z&\s]+?)(?:\s*,|\n|Code|GSTIN|Party|Bill|Ship|$)/i,
-  ];
-  for (const p of patterns) {
-    const m = text.match(p);
-    if (m) {
-      const raw = m[1].trim().replace(/\s+/g, " ");
-      const codeMatch = raw.match(/^(\d{2})[\s\-]/);
-      if (codeMatch) return STATE_CODES[codeMatch[1]] ?? raw;
-      return raw;
+  );
+  if (explicit) {
+    const raw = explicit[1].trim().replace(/\s+/g, " ");
+    const codeMatch = raw.match(/^(\d{2})[\s\-]/);
+    if (codeMatch) return STATE_CODES[codeMatch[1]] ?? raw;
+    return raw;
+  }
+  // 2. Customer GSTIN state code — reliable for B2B invoices.
+  if (customerGstin) {
+    const fromGstin = stateFromGstin(customerGstin);
+    if (fromGstin) return fromGstin;
+  }
+  // 3. Buyer-block state (e.g. "Ship To ... Tamil Nadu"). Never use a bare
+  //    "State :" line — that usually names the seller and would flip
+  //    Interstate invoices to Intrastate, wiping IGST.
+  const shipMatch = text.match(
+    /(?:Ship(?:ped)?\s*To|Bill(?:ed)?\s*To|Buyer|Consignee)[^\n]*\n?[^\n]{0,300}?\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\b(?=\s*(?:\d{6}|,|$))/i,
+  );
+  if (shipMatch) {
+    const cand = shipMatch[1].trim();
+    const norm = cand.toLowerCase().replace(/[^a-z]/g, "");
+    for (const [code, name] of Object.entries(STATE_CODES)) {
+      if (name.toLowerCase().replace(/[^a-z]/g, "") === norm) return name;
+      void code;
     }
   }
   return null;
@@ -601,7 +617,7 @@ export async function parseInvoicePdf(file: File): Promise<InvoiceRecord> {
   const customerGstin = gstins[1] ?? null;
 
   const supplierState = supplierGstin ? stateFromGstin(supplierGstin) : null;
-  let placeOfSupply = extractPlaceOfSupply(text);
+  let placeOfSupply = extractPlaceOfSupply(text, customerGstin);
   if (!placeOfSupply && customerGstin) placeOfSupply = stateFromGstin(customerGstin);
 
   const rateSplits = extractRateSplits(text);
