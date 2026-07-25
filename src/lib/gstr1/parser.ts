@@ -177,24 +177,85 @@ function findGstins(text: string): string[] {
   return [...out];
 }
 
-function extractInvoiceNumber(text: string): string | null {
-  const patterns = [
-    /Invoice\s*(?:No|Number|#)\.?\s*[:\-–]?\s*([A-Za-z0-9][A-Za-z0-9\/\-]{2,})/i,
-    /Bill\s*(?:No|Number)\.?\s*[:\-–]?\s*([A-Za-z0-9][A-Za-z0-9\/\-]{2,})/i,
-    /Inv\s*(?:No|#)\.?\s*[:\-–]?\s*([A-Za-z0-9][A-Za-z0-9\/\-]{2,})/i,
-    // Fallback: "Invoice" appears alone on one line, value on the next
-    /Invoice\s*(?:No|Number|#)?\.?\s*[:\-–]?\s*\n\s*([A-Za-z0-9][A-Za-z0-9\/\-]{2,})/i,
+function cleanInvoiceNumber(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const value = raw
+    .replace(/[|\\]/g, "/")
+    .replace(/[–—]/g, "-")
+    .replace(/\s*\/\s*/g, "/")
+    .replace(/\s*-\s*/g, "-")
+    .replace(/^[#:\-\s]+/, "")
+    .replace(/[.,;:)\]]+$/, "")
+    .trim()
+    .toUpperCase();
+
+  if (!value) return null;
+  if (/^(TAX|GSTIN|GST|DATE|NA|NIL|ORIGINAL|DUPLICATE|COPY|PAN|NO|NUMBER|STATE|OWN)$/i.test(value)) return null;
+  if (/^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]$/i.test(value)) return null;
+  if (!/[A-Z]/.test(value) || !/\d/.test(value)) return null;
+  if (value.length < 4 || value.length > 30) return null;
+  return value;
+}
+
+function invoiceNumberFromFileName(fileName?: string): string | null {
+  if (!fileName) return null;
+  const base = fileName.replace(/\.[^.]+$/, "").toUpperCase();
+  const alreadyFormatted = base.match(/\b([A-Z]{2,6}[\/-]\d{2,5}[\/-]\d{2,6})\b/);
+  if (alreadyFormatted) return cleanInvoiceNumber(alreadyFormatted[1]);
+
+  // Common scanned-file name format for AV Enterprises invoices: AVE2627023.pdf → AVE/2627/023.
+  const compact = base.match(/\b([A-Z]{2,6})[-_\s]?(\d{4})(\d{2,6})\b/);
+  if (compact) return cleanInvoiceNumber(`${compact[1]}/${compact[2]}/${compact[3]}`);
+  return null;
+}
+
+function extractInvoiceNumber(text: string, fileName?: string): string | null {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  const invoiceToken = "([A-Za-z0-9][A-Za-z0-9/ -]{2,29})";
+  const labelPatterns = [
+    new RegExp(`(?:tax\\s*)?(?:i[nl1]voice|inovice)\\s*(?:no|number|#)?\\.?\\s*[:\\-–—]?\\s*${invoiceToken}`, "i"),
+    new RegExp(`bill\\s*(?:no|number)\\.?\\s*[:\\-–—]?\\s*${invoiceToken}`, "i"),
+    new RegExp(`inv\\.?\\s*(?:no|number|#)?\\.?\\s*[:\\-–—]?\\s*${invoiceToken}`, "i"),
   ];
-  for (const p of patterns) {
-    const m = text.match(p);
-    if (m) {
-      const v = m[1].trim().toUpperCase();
-      // Skip obvious non-numbers (headings, "TAX", "GSTIN", etc.)
-      if (/^(TAX|GSTIN|DATE|NA|NIL|ORIGINAL|COPY|PAN|NO)$/i.test(v)) continue;
-      return v;
+
+  const trimTrailingLabels = (candidate: string) =>
+    candidate
+      .split(/\s{2,}|\s+(?:vehicle|date|po|state|party|bill\s+to|ship(?:ped)?\s+to|gstin|uin)\b/i)[0]
+      .trim();
+
+  for (let i = 0; i < lines.length; i++) {
+    const windowText = `${lines[i]} ${lines[i + 1] ?? ""}`.trim();
+    for (const pattern of labelPatterns) {
+      const match = windowText.match(pattern);
+      const cleaned = cleanInvoiceNumber(trimTrailingLabels(match?.[1] ?? ""));
+      if (cleaned) return cleaned;
+    }
+
+    // Header/value layout: "Invoice No   Date" followed by "AVE/2627/023   13-MAY-26".
+    if (/\b(?:i[nl1]voice|inovice|inv\.?)\s*(?:no|number|#)?\b/i.test(lines[i]) && lines[i + 1]) {
+      const nextToken = lines[i + 1].match(/\b([A-Z]{2,6}\s*[\/\-]\s*\d{2,5}\s*[\/\-]\s*\d{2,6})\b/i);
+      const cleaned = cleanInvoiceNumber(nextToken?.[1]);
+      if (cleaned) return cleaned;
     }
   }
-  return null;
+
+  const firstPageText = lines.slice(0, 35).join(" ");
+  const formattedCandidate = firstPageText.match(/\b([A-Z]{2,6}\s*[\/\-]\s*\d{2,5}\s*[\/\-]\s*\d{2,6})\b/i);
+  const cleanedFormatted = cleanInvoiceNumber(formattedCandidate?.[1]);
+  if (cleanedFormatted) return cleanedFormatted;
+
+  // OCR sometimes drops the separators: "AVE2627023". Recover it when it appears near invoice text.
+  if (/\b(?:tax\s*)?(?:i[nl1]voice|inovice|inv\.?)\b/i.test(firstPageText)) {
+    const compact = firstPageText.match(/\b([A-Z]{2,6})(\d{4})(\d{2,6})\b/i);
+    const cleanedCompact = compact ? cleanInvoiceNumber(`${compact[1]}/${compact[2]}/${compact[3]}`) : null;
+    if (cleanedCompact) return cleanedCompact;
+  }
+
+  return invoiceNumberFromFileName(fileName);
 }
 
 const MONTH_TOKEN_PATTERN =
@@ -660,7 +721,7 @@ export async function parseInvoicePdf(file: File): Promise<InvoiceRecord> {
 
   const rec: InvoiceRecord = {
     fileName: file.name,
-    invoiceNumber: extractInvoiceNumber(text),
+    invoiceNumber: extractInvoiceNumber(text, file.name),
     invoiceDate: extractInvoiceDate(text),
     customerGstin,
     customerName: extractCustomerName(text),
