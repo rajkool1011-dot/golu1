@@ -37,7 +37,7 @@ export interface InvoiceRecord {
   supplyType: "Interstate" | "Intrastate" | "Unknown";
   issues: string[];
   rawText: string;
-  source?: "OCR" | "AI" | "AI+OCR";
+  source?: "OCR" | "AI" | "AI+OCR" | "OCR+Fix" | "AI+Fix" | "AI+OCR+Fix";
 }
 
 export async function readPdfText(file: File): Promise<string> {
