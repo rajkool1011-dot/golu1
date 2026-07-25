@@ -617,7 +617,7 @@ export async function parseInvoicePdf(file: File): Promise<InvoiceRecord> {
   const customerGstin = gstins[1] ?? null;
 
   const supplierState = supplierGstin ? stateFromGstin(supplierGstin) : null;
-  let placeOfSupply = extractPlaceOfSupply(text);
+  let placeOfSupply = extractPlaceOfSupply(text, customerGstin);
   if (!placeOfSupply && customerGstin) placeOfSupply = stateFromGstin(customerGstin);
 
   const rateSplits = extractRateSplits(text);
