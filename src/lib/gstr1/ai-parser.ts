@@ -45,6 +45,7 @@ export async function parseInvoiceAI(file: File): Promise<InvoiceRecord> {
       customerGstin: local.customerGstin || ai.customer_gstin,
       placeOfSupply: local.placeOfSupply || ai.place_of_supply,
       invoiceValue: local.invoiceValue ?? ai.invoice_value,
+      source: (local.rateSplits.length > 0 || local.invoiceNumber) ? "AI+OCR" : "AI",
     };
 
     if (local.rateSplits.length === 0 && ai.rows.length > 0) {

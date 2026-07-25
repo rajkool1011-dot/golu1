@@ -693,6 +693,7 @@ function Index() {
                           <TableHead className="text-right">CGST</TableHead>
                           <TableHead className="text-right">SGST</TableHead>
                           <TableHead>Rates</TableHead>
+                          <TableHead>Source</TableHead>
                           <TableHead>Status</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -736,6 +737,23 @@ function Index() {
                               <TableCell className="text-right tabular-nums">{t.sgst > 0 ? fmt(t.sgst) : "—"}</TableCell>
                               <TableCell className="text-xs">
                                 {r.rateSplits.map((s) => `${s.rate}%`).join(", ") || "—"}
+                              </TableCell>
+                              <TableCell>
+                                {r.source === "AI" ? (
+                                  <Badge className="bg-violet-600 hover:bg-violet-600 text-white">
+                                    <Sparkles className="mr-1 h-3 w-3" aria-hidden="true" />
+                                    AI
+                                  </Badge>
+                                ) : r.source === "AI+OCR" ? (
+                                  <Badge className="bg-amber-500 hover:bg-amber-500 text-white">
+                                    <Sparkles className="mr-1 h-3 w-3" aria-hidden="true" />
+                                    AI+OCR
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="border-emerald-600 text-emerald-700">
+                                    OCR · Free
+                                  </Badge>
+                                )}
                               </TableCell>
                               <TableCell>
                                 {r.issues.length === 0 ? (

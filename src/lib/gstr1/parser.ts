@@ -37,6 +37,7 @@ export interface InvoiceRecord {
   supplyType: "Interstate" | "Intrastate" | "Unknown";
   issues: string[];
   rawText: string;
+  source?: "OCR" | "AI" | "AI+OCR";
 }
 
 export async function readPdfText(file: File): Promise<string> {
@@ -641,6 +642,7 @@ export async function parseInvoicePdf(file: File): Promise<InvoiceRecord> {
     supplyType,
     issues: [],
     rawText: text,
+    source: "OCR",
   };
 
   validate(rec);
