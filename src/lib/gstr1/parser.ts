@@ -642,6 +642,7 @@ export async function parseInvoicePdf(file: File): Promise<InvoiceRecord> {
     supplyType,
     issues: [],
     rawText: text,
+    source: "OCR",
   };
 
   validate(rec);
