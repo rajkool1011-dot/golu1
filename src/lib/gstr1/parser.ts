@@ -215,7 +215,7 @@ function extractInvoiceNumber(text: string, fileName?: string): string | null {
     .map((line) => line.replace(/\s+/g, " ").trim())
     .filter(Boolean);
 
-  const invoiceToken = "([A-Za-z0-9][A-Za-z0-9\\/\- ]{2,29})";
+  const invoiceToken = "([A-Za-z0-9][A-Za-z0-9/ -]{2,29})";
   const labelPatterns = [
     new RegExp(`(?:tax\\s*)?(?:i[nl1]voice|inovice)\\s*(?:no|number|#)?\\.?\\s*[:\\-–—]?\\s*${invoiceToken}`, "i"),
     new RegExp(`bill\\s*(?:no|number)\\.?\\s*[:\\-–—]?\\s*${invoiceToken}`, "i"),
