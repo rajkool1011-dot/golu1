@@ -46,7 +46,6 @@ import { exportHsnWorkbook } from "@/lib/gstr1/hsn-exporter";
 import { exportB2cWorkbook } from "@/lib/gstr1/b2c-exporter";
 import { exportDashboardWorkbook } from "@/lib/gstr1/dashboard-exporter";
 import { GstDashboard } from "@/components/GstDashboard";
-import { SettingsMenu } from "@/components/SettingsMenu";
 
 
 export const Route = createFileRoute("/")({
@@ -58,10 +57,10 @@ export const Route = createFileRoute("/")({
         content:
           "Drop PDF tax invoices and export a ready-to-file GSTR-1 workbook. Auto rate-splits, GSTIN validation, B2B/B2C classification.",
       },
-      { property: "og:title", content: "GSTR-1 Auto Prep" },
+      { property: "og:title", content: "GSTR-1 Auto Prep — Extract invoices to GSTR-1 Excel" },
       {
         property: "og:description",
-        content: "PDF tax invoices → GSTR-1 Excel. All processed in your browser.",
+        content: "Drop PDF tax invoices and export a ready-to-file GSTR-1 workbook. Auto rate-splits, GSTIN validation, B2B/B2C classification.",
       },
     ],
   }),
@@ -320,7 +319,6 @@ function Index() {
               Invoice PDFs → GSTR-1 ready exports
             </div>
           </div>
-          <SettingsMenu />
           <span className="hidden items-center gap-1.5 rounded-full border border-border bg-muted/60 px-3 py-1 text-[11px] font-medium text-muted-foreground md:inline-flex">
             <ShieldCheck className="h-3.5 w-3.5 text-[color:var(--brand)]" aria-hidden="true" />
             Runs 100% in your browser
@@ -695,7 +693,6 @@ function Index() {
                           <TableHead className="text-right">CGST</TableHead>
                           <TableHead className="text-right">SGST</TableHead>
                           <TableHead>Rates</TableHead>
-                          <TableHead>Source</TableHead>
                           <TableHead>Status</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -739,23 +736,6 @@ function Index() {
                               <TableCell className="text-right tabular-nums">{t.sgst > 0 ? fmt(t.sgst) : "—"}</TableCell>
                               <TableCell className="text-xs">
                                 {r.rateSplits.map((s) => `${s.rate}%`).join(", ") || "—"}
-                              </TableCell>
-                              <TableCell>
-                                {r.source === "AI" ? (
-                                  <Badge className="bg-violet-600 hover:bg-violet-600 text-white">
-                                    <Sparkles className="mr-1 h-3 w-3" aria-hidden="true" />
-                                    AI
-                                  </Badge>
-                                ) : r.source === "AI+OCR" ? (
-                                  <Badge className="bg-amber-500 hover:bg-amber-500 text-white">
-                                    <Sparkles className="mr-1 h-3 w-3" aria-hidden="true" />
-                                    AI+OCR
-                                  </Badge>
-                                ) : (
-                                  <Badge variant="outline" className="border-emerald-600 text-emerald-700">
-                                    OCR · Free
-                                  </Badge>
-                                )}
                               </TableCell>
                               <TableCell>
                                 {r.issues.length === 0 ? (
