@@ -319,6 +319,7 @@ function Index() {
               Invoice PDFs → GSTR-1 ready exports
             </div>
           </div>
+          <SettingsMenu />
           <span className="hidden items-center gap-1.5 rounded-full border border-border bg-muted/60 px-3 py-1 text-[11px] font-medium text-muted-foreground md:inline-flex">
             <ShieldCheck className="h-3.5 w-3.5 text-[color:var(--brand)]" aria-hidden="true" />
             Runs 100% in your browser
