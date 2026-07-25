@@ -179,13 +179,20 @@ function findGstins(text: string): string[] {
 
 function extractInvoiceNumber(text: string): string | null {
   const patterns = [
-    /Invoice\s*(?:No|Number|#)\.?\s*[:\-]?\s*([A-Z0-9\/\-]+)/i,
-    /Bill\s*(?:No|Number)\.?\s*[:\-]?\s*([A-Z0-9\/\-]+)/i,
-    /Inv\s*(?:No|#)\.?\s*[:\-]?\s*([A-Z0-9\/\-]+)/i,
+    /Invoice\s*(?:No|Number|#)\.?\s*[:\-–]?\s*([A-Za-z0-9][A-Za-z0-9\/\-]{2,})/i,
+    /Bill\s*(?:No|Number)\.?\s*[:\-–]?\s*([A-Za-z0-9][A-Za-z0-9\/\-]{2,})/i,
+    /Inv\s*(?:No|#)\.?\s*[:\-–]?\s*([A-Za-z0-9][A-Za-z0-9\/\-]{2,})/i,
+    // Fallback: "Invoice" appears alone on one line, value on the next
+    /Invoice\s*(?:No|Number|#)?\.?\s*[:\-–]?\s*\n\s*([A-Za-z0-9][A-Za-z0-9\/\-]{2,})/i,
   ];
   for (const p of patterns) {
     const m = text.match(p);
-    if (m) return m[1].trim();
+    if (m) {
+      const v = m[1].trim().toUpperCase();
+      // Skip obvious non-numbers (headings, "TAX", "GSTIN", etc.)
+      if (/^(TAX|GSTIN|DATE|NA|NIL|ORIGINAL|COPY|PAN|NO)$/i.test(v)) continue;
+      return v;
+    }
   }
   return null;
 }
