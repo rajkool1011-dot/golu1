@@ -739,6 +739,23 @@ function Index() {
                                 {r.rateSplits.map((s) => `${s.rate}%`).join(", ") || "—"}
                               </TableCell>
                               <TableCell>
+                                {r.source === "AI" ? (
+                                  <Badge className="bg-violet-600 hover:bg-violet-600 text-white">
+                                    <Sparkles className="mr-1 h-3 w-3" aria-hidden="true" />
+                                    AI
+                                  </Badge>
+                                ) : r.source === "AI+OCR" ? (
+                                  <Badge className="bg-amber-500 hover:bg-amber-500 text-white">
+                                    <Sparkles className="mr-1 h-3 w-3" aria-hidden="true" />
+                                    AI+OCR
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="border-emerald-600 text-emerald-700">
+                                    OCR · Free
+                                  </Badge>
+                                )}
+                              </TableCell>
+                              <TableCell>
                                 {r.issues.length === 0 ? (
                                   <span className="inline-flex items-center gap-1 text-emerald-600">
                                     <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
