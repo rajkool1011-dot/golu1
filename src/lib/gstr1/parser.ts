@@ -431,9 +431,18 @@ function extractRateSplits(text: string): RateSplit[] {
           const tax = rest.find((v) => Math.abs(v - expected) <= Math.max(2, expected * 0.2)) ?? rest[0];
           // Assume intrastate split (CGST+SGST) as safe default; parser rebalances later.
           b.cgst += tax / 2; b.sgst += tax / 2;
-        }
       }
     }
+  }
+
+  // If the tax-summary table was parsed successfully, TRUST it and skip all
+  // other heuristics — they only introduce double-counting or noise from
+  // line-item rows (e.g. HSN digits misread as a rate).
+  if (bucket.size > 0) {
+    return [...bucket.values()].filter(
+      (r) => r.taxableValue > 0 || r.igst > 0 || r.cgst > 0 || r.sgst > 0,
+    );
+  }
   }
 
   // Heuristic 0b: Standalone `<rate>%  <taxable> <tax> <total>` line anywhere.
