@@ -46,6 +46,7 @@ import { exportHsnWorkbook } from "@/lib/gstr1/hsn-exporter";
 import { exportB2cWorkbook } from "@/lib/gstr1/b2c-exporter";
 import { exportDashboardWorkbook } from "@/lib/gstr1/dashboard-exporter";
 import { GstDashboard } from "@/components/GstDashboard";
+import { SettingsMenu } from "@/components/SettingsMenu";
 
 
 export const Route = createFileRoute("/")({
