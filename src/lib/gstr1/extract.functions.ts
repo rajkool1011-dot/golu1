@@ -172,7 +172,9 @@ export const extractInvoiceWithAI = createServerFn({ method: "POST" })
     const lovableKey = process.env.LOVABLE_API_KEY;
     if (!geminiKey && !lovableKey) throw new Error("Missing GEMINI_API_KEY or LOVABLE_API_KEY");
 
-    const invoiceText = data.text.trim().slice(0, 45000);
+    // Cost reduction: cap input tokens tightly. 15k chars ~ 4-5k tokens is
+    // plenty for a single invoice; tail rarely holds primary fields.
+    const invoiceText = data.text.trim().slice(0, 15000);
     const userPrompt = `Extract invoice fields from this invoice text (file: ${data.fileName}). Return JSON only.\n\n${invoiceText}`;
 
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -183,7 +185,8 @@ export const extractInvoiceWithAI = createServerFn({ method: "POST" })
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       if (useGemini) {
         res = await fetch(
-          "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
+          // Cheapest Gemini tier suitable for structured extraction.
+          "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
           {
             method: "POST",
             headers: {
@@ -195,7 +198,7 @@ export const extractInvoiceWithAI = createServerFn({ method: "POST" })
               contents: [{ role: "user", parts: [{ text: userPrompt }] }],
               generationConfig: {
                 responseMimeType: "application/json",
-                maxOutputTokens: 8192,
+                maxOutputTokens: 2048,
                 temperature: 0,
               },
             }),
@@ -210,13 +213,13 @@ export const extractInvoiceWithAI = createServerFn({ method: "POST" })
             "X-Lovable-AIG-SDK": "vercel-ai-sdk",
           },
           body: JSON.stringify({
-            model: "google/gemini-3-flash-preview",
+            model: "google/gemini-2.5-flash-lite",
             messages: [
               { role: "system", content: SYSTEM_PROMPT },
               { role: "user", content: userPrompt },
             ],
             response_format: { type: "json_object" },
-            max_tokens: 8192,
+            max_tokens: 2048,
           }),
         });
       }
