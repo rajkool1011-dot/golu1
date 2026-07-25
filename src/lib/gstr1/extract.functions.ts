@@ -94,6 +94,7 @@ export type ExtractInvoiceResult =
 const Input = z.object({
   fileName: z.string(),
   text: z.string(),
+  userGeminiKey: z.string().optional(),
 });
 
 function stripJson(text: string): string {
@@ -168,7 +169,9 @@ function repairTruncatedJson(text: string): string {
 export const extractInvoiceWithAI = createServerFn({ method: "POST" })
   .inputValidator((v: unknown) => Input.parse(v))
   .handler(async ({ data }) => {
-    const geminiKey = process.env.GEMINI_API_KEY;
+    // Priority: user's own Gemini key (free tier, no Lovable credits) →
+    // project GEMINI_API_KEY → LOVABLE_API_KEY gateway.
+    const geminiKey = data.userGeminiKey?.trim() || process.env.GEMINI_API_KEY;
     const lovableKey = process.env.LOVABLE_API_KEY;
     if (!geminiKey && !lovableKey) throw new Error("Missing GEMINI_API_KEY or LOVABLE_API_KEY");
 
